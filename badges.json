@@ -81,6 +81,19 @@
       "button": "Got it",
       "button_ru": "Понятно",
       "button_uk": "Зрозуміло"
+    },
+    {
+      "id": "chonky",
+      "users": [
+        "7641667656839382038",
+        "7662504626076730386"
+      ],
+      "colour": "FFE9A0",
+      "title": "MargyT",
+      "text": "толстопузая маргиТ",
+      "button": "uhh nope",
+      "button_ru": "нет",
+      "button_uk": "no"
     }
   ]
 }
