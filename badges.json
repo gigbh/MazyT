@@ -72,12 +72,29 @@
     },
     {
       "id": "supporter",
-      "users": [],
+      "users": [
+        "7492852642231059461",
+        "7600534060289082382",
+        "7660087479496016903"
+      ],
       "colour": "FF6FA5",
       "title": "MargyT",
       "text": "supported the making of MargyT",
       "text_ru": "поддержал разработку MargyT",
       "text_uk": "підтримав розробку MargyT",
+      "button": "Got it",
+      "button_ru": "Понятно",
+      "button_uk": "Зрозуміло"
+    },
+    {
+      "id": "chonky",
+      "users": [
+        "7641667656839382038",
+        "7662504626076730386"
+      ],
+      "colour": "FFE9A0",
+      "title": "MargyT",
+      "text": "толстопузая маргиТ",
       "button": "Got it",
       "button_ru": "Понятно",
       "button_uk": "Зрозуміло"
