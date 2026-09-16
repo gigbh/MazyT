@@ -70,66 +70,65 @@ public final class Badge {
     private static String marked(String name, String uid) {
         if (name == null || name.length() == 0) return name;
         try {
-            for (int i = 0; i < name.length(); i++) {
-                if (Badges.isMark(name.charAt(i))) return name;  // already done
-            }
-            remember(uid, name);
+            // Cleared first, always. Whatever marks are on the way in are
+            // either ones the mod put there a moment ago -- in which case
+            // adding them again is what gave everybody two badges -- or ones
+            // somebody typed into their own name to wear a badge they were
+            // never given. Neither survives; only what the account is owed is
+            // put back.
+            String own = strip(name);
+            remember(uid, own);
             String marks = Badges.marksFor(uid);
-            if (marks.length() > 0) return name + '\u2009' + marks;
+            if (marks.length() > 0) return own + '\u2009' + marks;
+            return own;
         } catch (Throwable ignored) {
+            return name;
         }
-        return name;
     }
 
-    // ------------------------------------------- names already on the screen
+    // ------------------------------------------- the name a profile just read
 
     /**
-     * Names the mod has seen, so one already drawn can be recognised.
+     * The one name worth putting back, and only for a moment.
      *
-     * A profile finishes loading and writes the name again by a road the mod
-     * does not stand on -- the mark never gets added, and what was there is
-     * replaced by the plain name. Rather than hunt for every such road, the
-     * mod remembers which name belongs to which account and puts the mark back
-     * on whatever is showing it.
+     * A profile writes its name again when it has finished loading, by a road
+     * the mod does not stand on, and the mark goes with it. The first attempt
+     * at fixing that remembered every name the mod had ever seen and put the
+     * mark back on any text that matched one -- which marked the word in a
+     * comment, in a bio, anywhere somebody wrote a name that happened to be
+     * somebody's. That is not where a badge belongs.
      *
-     * Only names that are worth marking are kept, and only the last few
-     * hundred: this is a lookup that runs against every piece of text on a
-     * screen, so it has to stay small and exact.
+     * So what is kept is one name, the one a profile asked for in the last few
+     * seconds, and nothing older. A badge still cannot appear anywhere except
+     * where TikTok asked for a nickname -- it only survives the profile
+     * finishing its work.
      */
-    private static final java.util.LinkedHashMap<String, String> plain =
-            new java.util.LinkedHashMap<String, String>();
+    private static volatile String lastName;
+    private static volatile String lastUid;
+    private static volatile long lastAt;
+
+    private static final long RECENT = 3000;
 
     private static void remember(String uid, String name) {
         if (uid == null || name == null || name.length() == 0) return;
         try {
-            if (Badges.marksFor(uid).length() == 0) {
-                return;  // nothing would be added, so nothing to put back
-            }
-            synchronized (plain) {
-                if (plain.size() > 300) {
-                    plain.remove(plain.keySet().iterator().next());
-                }
-                plain.put(name, uid);
-            }
+            if (Badges.marksFor(uid).length() == 0) return;
+            lastName = name;
+            lastUid = uid;
+            lastAt = android.os.SystemClock.uptimeMillis();
         } catch (Throwable ignored) {
         }
     }
 
-    /**
-     * Put the marks back on names already drawn.
-     *
-     * Walked after the screen has settled. A view is only touched when its
-     * text is exactly a name the mod knows belongs to an account with
-     * something to show -- so nothing else on the screen can be caught by it.
-     */
+    /** Put the mark back on the profile name that was read a moment ago. */
     public static void rewrite(View root) {
-        if (root == null) return;
-        synchronized (plain) {
-            if (plain.isEmpty()) return;
-        }
+        String name = lastName;
+        String uid = lastUid;
+        if (root == null || name == null || uid == null) return;
+        if (android.os.SystemClock.uptimeMillis() - lastAt > RECENT) return;
         try {
             seen = 0;
-            walk(root, 0);
+            walk(root, 0, name, uid);
         } catch (Throwable ignored) {
         }
     }
@@ -137,46 +136,29 @@ public final class Badge {
     /**
      * How deep to go, and how much to do at once.
      *
-     * Fourteen was far too shallow and it showed: a comment sheet is a few
-     * levels down and was reached, while a profile or the inbox -- a fragment
-     * inside a pager inside a list inside a coordinator -- is twenty and more,
-     * and the walk simply stopped before it got there. The budget is what
-     * keeps this bounded now, rather than the depth: a screen is a few hundred
-     * views, and anything claiming to be tens of thousands is not a screen.
+     * A profile or the inbox is a fragment inside a pager inside a list inside
+     * a coordinator, and twenty levels is not unusual -- fourteen reached a
+     * comment sheet and stopped well short of those.
      */
     private static final int DEEP = 40;
     private static final int BUDGET = 4000;
 
     private static int seen;
 
-    private static volatile boolean said;
-
-    private static void walk(View view, int depth) {
+    private static void walk(View view, int depth, String name, String uid) {
         if (view == null || depth > DEEP || ++seen > BUDGET) return;
         if (view instanceof TextView) {
             TextView text = (TextView) view;
             CharSequence showing = text.getText();
-            if (showing != null && showing.length() > 0 && showing.length() < 80) {
-                String uid;
-                synchronized (plain) {
-                    uid = plain.get(showing.toString());
-                }
-                if (uid != null) {
-                    String out = marked(showing.toString(), uid);
-                    if (!out.equals(showing.toString())) {
-                        setText(text, out);
-                        if (!said) {
-                            said = true;
-                            Diary.note("badge: a name already drawn was marked again");
-                        }
-                    }
-                }
+            if (showing != null && name.contentEquals(showing)) {
+                String out = marked(showing.toString(), uid);
+                if (!out.equals(showing.toString())) setText(text, out);
             }
         }
         if (view instanceof android.view.ViewGroup) {
             android.view.ViewGroup group = (android.view.ViewGroup) view;
             int many = group.getChildCount();
-            for (int i = 0; i < many; i++) walk(group.getChildAt(i), depth + 1);
+            for (int i = 0; i < many; i++) walk(group.getChildAt(i), depth + 1, name, uid);
         }
     }
 
@@ -249,12 +231,24 @@ public final class Badge {
         }
     }
 
-    /** The name with no marks left in it at all. */
+    /**
+     * The name with nothing of the private-use area left in it.
+     *
+     * Not only the marks this run happens to use: the whole area. A name is
+     * text somebody chose, and none of that text has any business being an
+     * invisible character that the mod might one day draw as a picture.
+     */
     private static String strip(String plain) {
+        boolean any = false;
+        for (int i = 0; i < plain.length() && !any; i++) {
+            any = Badges.isPrivate(plain.charAt(i));
+        }
+        if (!any) return plain;
+
         StringBuilder out = new StringBuilder(plain.length());
         for (int i = 0; i < plain.length(); i++) {
             char c = plain.charAt(i);
-            if (!Badges.isMark(c)) out.append(c);
+            if (!Badges.isPrivate(c)) out.append(c);
         }
         return tidy(out.toString());
     }

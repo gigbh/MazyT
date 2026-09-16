@@ -1,8 +1,8 @@
 {
   "_comment": "What the app checks to know whether it is out of date. It reads this from the repository at startup and every five minutes, the same way it reads badges.json.",
-  "version": "0.21",
-  "url": "https://github.com/narezany/MargyT/releases/download/v0.21/margyt.apk",
-  "notes": "Streaks keep themselves again, the region works with no SIM in the phone, every emoji pack rides inside the mod, and there is a cat.",
-  "notes_ru": "Серии снова продлеваются сами, регион работает без симкарты, все паки эмодзи внутри мода, и есть кот.",
-  "notes_uk": "Серії знову продовжуються самі, регіон працює без сімкарти, усі паки емодзі всередині мода, і є кіт."
+  "version": "0.21.1",
+  "url": "https://github.com/narezany/MargyT/releases/download/v0.21.1/margyt.apk",
+  "notes": "A badge nobody can wear without being given it, and an icon with smooth edges.",
+  "notes_ru": "Значок, который нельзя надеть без выдачи, и иконка со сглаженными краями.",
+  "notes_uk": "Значок, який не можна надіти без видачі, та іконка зі згладженими краями."
 }

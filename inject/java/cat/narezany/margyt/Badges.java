@@ -111,8 +111,36 @@ public static final String KEY = "badges_on";
      */
     private static volatile Badge[] numbered = new Badge[0];
 
-    private static final char FIRST = '\uE000';
+    /**
+     * Where the marks sit in the private-use area -- and it moves every start.
+     *
+     * A mark used to be U+E000 plus the badge's number, the same on every
+     * phone and every run. Which meant anybody could put that character in
+     * their own name and wear somebody else's badge: the drawing code sees a
+     * character, not an account.
+     *
+     * Two things fix that, and this is the second one. The first is that a
+     * name is stripped of every private-use character before the mod adds its
+     * own, so nothing typed into a name survives. This covers everywhere else
+     * -- a comment, a bio, anything that is not a name: the run picks a random
+     * place in the private-use area, so a character copied out of somebody's
+     * screenshot is not a mark on anybody else's phone, and not on the same
+     * phone tomorrow.
+     */
+    private static final char FIRST = pick();
+
     private static final int MOST = 64;
+
+    private static char pick() {
+        // U+E000..U+F8FF is the private-use area; leave room for the whole run
+        int room = 0xF8FF - 0xE000 - MOST;
+        return (char) (0xE000 + (int) (Math.random() * room));
+    }
+
+    /** Anything in the private-use area, ours or not. Names are cleared of it. */
+    public static boolean isPrivate(char c) {
+        return c >= '\uE000' && c <= '\uF8FF';
+    }
 
     private static volatile boolean started;
 

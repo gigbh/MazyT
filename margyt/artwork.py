@@ -15,20 +15,47 @@ VIEWPORT = 108
 
 BACKGROUND = [(MINT, "M0,0 h108 v108 h-108 z")]
 
-# Two things were wrong with the first drawing of this. The beam is slanted,
-# so its top edge at the right stem's left side sat *below* that stem's flat
-# top and a corner of the stem stuck out above it -- the beam now clears both
-# stems along their whole width. And the glyph filled the square rather than
-# the circle inside it: a launcher that masks icons to a circle was cutting the
-# lower left note head. Everything is now inside a radius of 36 from the
-# centre, which is the safe zone, so no mask reaches it.
-GLYPH = [
-    (WHITE, "M32.1,71.2 a8.6,6.2 0 1,0 17.2,0 a8.6,6.2 0 1,0 -17.2,0 z"),  # left head
-    (WHITE, "M58.7,64.9 a8.6,6.2 0 1,0 17.2,0 a8.6,6.2 0 1,0 -17.2,0 z"),  # right head
-    (WHITE, "M44.6,35.3 h4.7 v35.9 h-4.7 z"),                  # left stem
-    (WHITE, "M71.2,29.0 h4.7 v35.9 h-4.7 z"),                  # right stem
-    (WHITE, "M44.6,34.5 L75.8,26.7 L75.8,36.1 L44.6,43.9 Z"),  # beam
-]
+# The shapes as numbers, because two things need them: the vector the adaptive
+# icon is built from, and the bitmap everything older is scaled down from. The
+# paths below are written out of these rather than beside them, so the two can
+# never drift apart.
+#
+# Two heads, two stems, one beam, in the 108-unit square.
+HEADS = [(40.7, 71.2, 8.6, 6.2), (67.3, 64.9, 8.6, 6.2)]   # cx, cy, rx, ry
+STEMS = [(44.6, 35.3, 4.7, 35.9), (71.2, 29.0, 4.7, 35.9)]  # x, y, w, h
+BEAM = [(44.6, 34.5), (75.8, 26.7), (75.8, 36.1), (44.6, 43.9)]
+
+#: how round the square is when it is drawn as a plain bitmap. An adaptive icon
+#: is masked by the launcher and must not be rounded here; everything older is
+#: shown as it comes, and a hard square looks like a mistake beside the rest.
+CORNER = 0.18
+
+
+def _ellipse(cx: float, cy: float, rx: float, ry: float) -> str:
+    return ("M%.1f,%.1f a%.1f,%.1f 0 1,0 %.1f,0 a%.1f,%.1f 0 1,0 -%.1f,0 z"
+            % (cx - rx, cy, rx, ry, rx * 2, rx, ry, rx * 2))
+
+
+def _rect(x: float, y: float, w: float, h: float) -> str:
+    return "M%.1f,%.1f h%.1f v%.1f h-%.1f z" % (x, y, w, h, w)
+
+
+def _polygon(points) -> str:
+    out = "M%.1f,%.1f" % points[0]
+    for point in points[1:]:
+        out += " L%.1f,%.1f" % point
+    return out + " Z"
+
+
+# The beam is slanted, so its top edge at the right stem's left side once sat
+# *below* that stem's flat top and a corner stuck out above it -- it now clears
+# both stems along their whole width. And the glyph sits inside a radius of 36
+# from the centre, the safe zone, so no launcher mask reaches it.
+GLYPH = (
+    [(WHITE, _ellipse(*head)) for head in HEADS]
+    + [(WHITE, _rect(*stem)) for stem in STEMS]
+    + [(WHITE, _polygon(BEAM))]
+)
 
 # for an icon that is one drawable rather than two layers
 COMBINED = BACKGROUND + GLYPH
