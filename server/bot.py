@@ -180,6 +180,19 @@ def badge_lines(uid):
     return "\n".join(out)
 
 
+def fresher(who):
+    """The stored profile, with a new avatar address if one can be had.
+
+    A TikTok avatar address is signed and stops working after a while, so the
+    one saved when somebody linked their account is no use a week later. The
+    name is enough to look the current one up.
+    """
+    if not who.get("username"):
+        return who
+    now = by_name(who["username"])
+    return now or who
+
+
 def profile_card(who):
     lines = []
     if who.get("nickname"):
@@ -214,6 +227,25 @@ def say(chat, text, reply=None):
          **({"reply_to_message_id": reply} if reply else {}))
 
 
+def show(chat, who, reply=None):
+    """A profile with its picture, when there is one to show.
+
+    The avatar comes off the same page the id did, so there is nothing extra
+    to fetch and nothing to store: the address is handed to Telegram and
+    Telegram fetches it. If that fails -- the address is signed and does
+    expire -- the words go out on their own rather than nothing going out.
+    """
+    card = profile_card(who)
+    avatar = who.get("avatar") or ""
+    if avatar.startswith("http"):
+        answer = call("sendPhoto", chat_id=chat, photo=avatar, caption=card,
+                      parse_mode="HTML",
+                      **({"reply_to_message_id": reply} if reply else {}))
+        if answer.get("ok"):
+            return
+    say(chat, card, reply)
+
+
 HELP = (
     "<b>MargyT</b>\n\n"
     "<b>бейджи</b> &lt;айди или @имя&gt; — чьи это значки\n"
@@ -237,8 +269,15 @@ def handle(update):
     text = (message.get("text") or message.get("caption") or "").strip()
     low = text.lower()
 
+    # A picture is an offered icon only where it can be nothing else: in a
+    # private chat, or with the word in the caption. In a group every photo
+    # anybody posts is not an offer, and answering each one with instructions
+    # is the bot being in the way.
     if message.get("document") or message.get("photo"):
-        return offered(message, chat, from_who, text)
+        private = (message["chat"].get("type") == "private")
+        if private or low.startswith("иконка") or low.startswith("icon"):
+            return offered(message, chat, from_who, text)
+        return
 
     if low in ("/start", "/help", "помощь"):
         me = call("getMe").get("result", {}).get("username", "margyt_bot")
@@ -251,7 +290,7 @@ def handle(update):
         who = account(which)
         if not who:
             return say(chat, "Не нашёл такого.")
-        return say(chat, profile_card(who), message["message_id"])
+        return show(chat, who, message["message_id"])
 
     if low.startswith("я ") or low.startswith("/link"):
         which = text.split(maxsplit=1)[1].strip() if len(text.split()) > 1 else ""
@@ -260,7 +299,7 @@ def handle(update):
             return say(chat, "Напиши так: <code>я 7551880794956989495</code> "
                              "или <code>я @narezany</code>")
         link(from_who.get("id"), from_who.get("username", ""), who["uid"], who)
-        return say(chat, "Привязал.\n\n" + profile_card(who))
+        return show(chat, who)
 
     if low.startswith("что за профиль") or low.startswith("/who"):
         reply = message.get("reply_to_message")
@@ -269,14 +308,14 @@ def handle(update):
             if not found:
                 return say(chat, "Этот человек не привязывал профиль.",
                            message["message_id"])
-            return say(chat, profile_card(found), message["message_id"])
+            return show(chat, fresher(found), message["message_id"])
 
         parts = text.split()
         if len(parts) >= 4:
             found = linked_by_name(parts[3])
             if not found:
                 return say(chat, "Не знаю такого.", message["message_id"])
-            return say(chat, profile_card(found), message["message_id"])
+            return show(chat, fresher(found), message["message_id"])
         return say(chat, "Ответь этой командой на чьё-нибудь сообщение "
                          "или добавь @имя в телеграме.", message["message_id"])
 
