@@ -411,10 +411,12 @@ public final class Themes {
                             last = now;
                             repaint(root);
                             Badge.rewrite(root);
+                            Dim.apply(activity);
                         }
                     });
             repaint(root);
             Badge.rewrite(root);
+            Dim.apply(activity);
         } catch (Throwable error) {
             Diary.note("theme: " + error);
         }

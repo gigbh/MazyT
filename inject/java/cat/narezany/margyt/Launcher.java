@@ -95,13 +95,15 @@ public final class Launcher {
     /** The picture for the settings to show, decoded once and kept. */
     public static Bitmap preview(String which) {
         int at = indexOf(which);
-        String png = at < 0 ? Shots.DEFAULT_PNG : Shots.PNG[at];
+        String[] png = at < 0 ? Shots.DEFAULT_PNG : Shots.PNG[at];
         if (which == null) return null;
         synchronized (drawn) {
             Bitmap known = drawn.get(which);
             if (known != null) return known;
             try {
-                byte[] raw = Base64.decode(png, Base64.DEFAULT);
+                StringBuilder whole = new StringBuilder();
+                for (String piece : png) whole.append(piece);
+                byte[] raw = Base64.decode(whole.toString(), Base64.DEFAULT);
                 Bitmap bitmap = BitmapFactory.decodeByteArray(raw, 0, raw.length);
                 if (bitmap != null) drawn.put(which, bitmap);
                 return bitmap;

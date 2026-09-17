@@ -78,6 +78,8 @@ public class SettingsActivity extends Activity {
     private ScrollView page;
     private View donateAnchor;
     private boolean thanksOpen;
+    private boolean mineOpen;
+    private java.util.List<Mine.Held> ordering;
     private boolean streakOpen;
     private boolean diaryOpen;
 
@@ -132,6 +134,7 @@ public class SettingsActivity extends Activity {
         column.addView(backArrow());
         column.addView(title("MargyT"));
 
+        if (Badges.freeStillOpen() && !Mine.hasFree()) column.addView(freeBanner());
         column.addView(donateBanner());
 
         column.addView(section(Text.REGION));
@@ -145,7 +148,7 @@ public class SettingsActivity extends Activity {
         if (countriesOpen) {
             countries.addView(line());
             for (String[] country : Margy.COUNTRIES) {
-                countries.addView(countryRow(country));
+                countries.addView(appear(countryRow(country)));
             }
         }
         column.addView(wrap(countries));
@@ -155,7 +158,7 @@ public class SettingsActivity extends Activity {
         accent.addView(accentHead());
         if (accentOpen) {
             accent.addView(line());
-            accent.addView(palette());
+            accent.addView(appear(palette()));
             if (Accent.fromWallpaper() != 0) {
                 accent.addView(line());
                 accent.addView(wallpaperRow());
@@ -181,16 +184,16 @@ public class SettingsActivity extends Activity {
                 theme.addView(shadeHead(true));
                 if (textOpen) {
                     theme.addView(line());
-                    theme.addView(shades(true));
+                    theme.addView(appear(shades(true)));
                 }
                 theme.addView(line());
                 theme.addView(shadeHead(false));
                 if (backgroundOpen) {
                     theme.addView(line());
-                    theme.addView(shades(false));
+                    theme.addView(appear(shades(false)));
                 }
                 theme.addView(line());
-                theme.addView(strengthRow());
+                theme.addView(appear(strengthRow()));
             }
             theme.addView(line());
             theme.addView(quiet(Text.THEME_NOTE));
@@ -202,7 +205,7 @@ public class SettingsActivity extends Activity {
         fonts.addView(fontHead());
         if (fontOpen) {
             fonts.addView(line());
-            fonts.addView(fontChoices());
+            fonts.addView(appear(fontChoices()));
         }
         column.addView(wrap(fonts));
 
@@ -211,13 +214,19 @@ public class SettingsActivity extends Activity {
         icons.addView(iconHead());
         if (iconOpen) {
             icons.addView(line());
-            icons.addView(iconChoices());
+            icons.addView(appear(iconChoices()));
         }
         column.addView(wrap(icons));
 
         column.addView(section(Text.FEED));
         LinearLayout feed = card();
         feed.addView(toggleRow("block", Text.HIDE_ADS, Feed.isEnabled(), Feed::setEnabled));
+        feed.addView(line());
+        feed.addView(toggleRow("visibility_off", Text.HIDE_LIVE, Feed.hides(Feed.KEY_LIVE),
+                on -> Feed.setHides(Feed.KEY_LIVE, on)));
+        feed.addView(line());
+        feed.addView(toggleRow("image", Text.HIDE_PHOTOS, Feed.hides(Feed.KEY_PHOTOS),
+                on -> Feed.setHides(Feed.KEY_PHOTOS, on)));
         column.addView(wrap(feed));
 
         column.addView(section(Text.VIDEO));
@@ -226,6 +235,19 @@ public class SettingsActivity extends Activity {
         video.addView(line());
         video.addView(toggleRow("timeline", Text.SEEKBAR, Seekbar.isEnabled(),
                 Seekbar::setEnabled));
+        video.addView(line());
+        video.addView(toggleRow("visibility_off", Text.DIM, Dim.isEnabled(), on -> {
+            Dim.setEnabled(on);
+            rebuild();
+        }));
+        if (Dim.isEnabled()) {
+            video.addView(line());
+            video.addView(slider(Text.DIM_HOW, Dim.strength(), 90, value -> {
+                Dim.setStrength(value);
+                markChanged();
+            }));
+            video.addView(quiet(Text.DIM_NOTE));
+        }
         column.addView(wrap(video));
 
         column.addView(section(Text.HIDDEN));
@@ -249,6 +271,37 @@ public class SettingsActivity extends Activity {
         downloads.addView(toggleRow("star", Text.SAVE_STICKERS_ON, Stickers.isEnabled(),
                 Stickers::setEnabled));
         column.addView(wrap(downloads));
+
+        column.addView(section(Text.TEXTURES));
+        LinearLayout textures = card();
+        textures.addView(toggleRow("image", Text.TEXTURES_ON, Textures.isEnabled(), on -> {
+            Textures.setEnabled(on);
+            markChanged();
+        }));
+        textures.addView(line());
+        textures.addView(actionRow("download", Text.TEXTURES_EXPORT,
+                Text.TEXTURES_EXPORT_NOTE, () -> exportTextures(false)));
+        textures.addView(line());
+        textures.addView(actionRow("article", Text.TEXTURES_EXPORT_XML,
+                Text.TEXTURES_EXPORT_XML_NOTE, () -> exportTextures(true)));
+        textures.addView(line());
+        textures.addView(actionRow("extension", Text.TEXTURES_INSTALL,
+                Text.TEXTURES_INSTALL_NOTE, this::pickTextures));
+        textures.addView(line());
+        textures.addView(linkRow("article", Text.TEXTURES_DOCS,
+                Text.TEXTURES_DOCS_NOTE, TEXTURE_DOCS));
+        List<Textures.Pack> packs = Textures.installed(this);
+        if (packs.isEmpty()) {
+            textures.addView(line());
+            textures.addView(quiet(Text.TEXTURES_NONE));
+        } else {
+            for (Textures.Pack one : packs) {
+                textures.addView(line());
+                textures.addView(packRow(one));
+            }
+        }
+        column.addView(wrap(textures));
+        column.addView(caption(Text.TEXTURES_NOTE));
 
         column.addView(section(Text.PLUGINS));
         LinearLayout plugins = card();
@@ -276,7 +329,7 @@ public class SettingsActivity extends Activity {
         streaks.addView(stickerHead());
         if (streakOpen) {
             streaks.addView(line());
-            streaks.addView(stickerChoices());
+            streaks.addView(appear(stickerChoices()));
         }
         streaks.addView(line());
         streaks.addView(actionRow("play_circle", Text.STREAK_TEST, Text.STREAK_TEST_NOTE,
@@ -298,10 +351,13 @@ public class SettingsActivity extends Activity {
         links.addView(toggleRow("favorite_border", Text.BADGES_ON, Badges.isEnabled(),
                 Badges::setEnabled));
         links.addView(line());
+        links.addView(mineHead());
+        if (mineOpen) links.addView(appear(mineRows()));
+        links.addView(line());
         links.addView(thanksHead());
         if (thanksOpen) {
             links.addView(line());
-            links.addView(thanks());
+            links.addView(appear(thanks()));
         }
         donateAnchor = wrap(links);
         column.addView(donateAnchor);
@@ -333,7 +389,7 @@ public class SettingsActivity extends Activity {
         diary.addView(diaryHead());
         if (diaryOpen) {
             diary.addView(line());
-            diary.addView(diaryLines());
+            diary.addView(appear(diaryLines()));
         }
         column.addView(wrap(diary));
 
@@ -535,6 +591,183 @@ public class SettingsActivity extends Activity {
         }
     }
 
+    // ------------------------------------------------------------ own badges
+
+    private View mineHead() {
+        LinearLayout row = row();
+        row.addView(icon("favorite_border"));
+
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        text.addView(label(Text.MINE));
+        text.addView(detail(Text.MINE_NOTE));
+        row.addView(text, grow());
+
+        TextView chevron = new TextView(this);
+        chevron.setText(mineOpen ? "⌃" : "⌄");
+        chevron.setTextColor(skin.muted());
+        chevron.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        chevron.setPadding(dp(12), 0, 0, 0);
+        row.addView(chevron);
+
+        row.setOnClickListener(v -> {
+            mineOpen = !mineOpen;
+            if (mineOpen) {
+                ordering = null;
+                Mine.ask(this::rebuild);
+            }
+            rebuild();
+        });
+        return sized(row, 64);
+    }
+
+    private View mineRows() {
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+
+        if (ordering == null) ordering = Mine.held();
+        if (ordering.isEmpty()) {
+            rows.addView(quiet(Mine.everAsked() ? Text.MINE_NONE : Text.MINE_WAIT));
+            return rows;
+        }
+
+        for (int i = 0; i < ordering.size(); i++) {
+            final int at = i;
+            final Mine.Held one = ordering.get(i);
+            if (i > 0) rows.addView(line());
+
+            LinearLayout row = row();
+            row.setPadding(dp(16), 0, dp(16), 0);
+
+            Badges.Badge badge = Badges.byId(one.id);
+            row.addView(badgeDot(badge));
+            row.addView(label(badge == null ? one.id : badge.text), grow());
+
+            // up and down rather than dragging: a row that can be dragged has
+            // to fight the page it is on for the same gesture
+            row.addView(mover("⌃", at > 0, () -> {
+                java.util.Collections.swap(ordering, at, at - 1);
+                rebuild();
+            }));
+            row.addView(mover("⌄", at < ordering.size() - 1, () -> {
+                java.util.Collections.swap(ordering, at, at + 1);
+                rebuild();
+            }));
+
+            M3Switch toggle = new M3Switch(this);
+            toggle.colours(Accent.colour(), skin.muted(), skin.card);
+            toggle.setChecked(one.shown, false);
+            toggle.setOnClickListener(v -> {
+                one.shown = !one.shown;
+                rebuild();
+            });
+            LinearLayout.LayoutParams size =
+                    new LinearLayout.LayoutParams(dp(52), dp(32));
+            size.leftMargin = dp(10);
+            row.addView(toggle, size);
+
+            rows.addView(sized(row, 60));
+        }
+
+        rows.addView(line());
+        rows.addView(actionRow("download", Text.SAVE, null, () -> Mine.save(ordering,
+                (ok, trouble) -> {
+                    Screen.say(ok ? Text.MINE_SAVED : Text.MINE_TOO_OFTEN);
+                    ordering = null;
+                    rebuild();
+                })));
+        return rows;
+    }
+
+    private View mover(String arrow, boolean can, final Runnable action) {
+        TextView view = new TextView(this);
+        view.setText(arrow);
+        view.setTextColor(can ? skin.text : skin.muted());
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        view.setGravity(Gravity.CENTER);
+        view.setPadding(dp(10), 0, dp(10), 0);
+        if (can) view.setOnClickListener(v -> action.run());
+        return view;
+    }
+
+    private View badgeDot(Badges.Badge badge) {
+        android.widget.ImageView view = new android.widget.ImageView(this);
+        LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(dp(26), dp(26));
+        size.rightMargin = dp(12);
+        view.setLayoutParams(size);
+        if (badge == null) return view;
+        android.graphics.Bitmap picture = badge.image.length() == 0
+                ? null : Badges.picture(this, badge.image);
+        if (picture != null) {
+            view.setImageBitmap(picture);
+            if (badge.colour != 0) {
+                view.setColorFilter(badge.colour, android.graphics.PorterDuff.Mode.SRC_IN);
+            }
+        }
+        return view;
+    }
+
+    /** The one that is free until it is not. */
+    private View freeBanner() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(18), dp(16), dp(18), dp(16));
+
+        GradientDrawable background = new GradientDrawable();
+        background.setCornerRadius(Math.max(skin.radius, dp(18)));
+        background.setColor(blend(0xFF40E0D0, skin.card, 0.82f));
+        card.setBackground(background);
+
+        TextView head = new TextView(this);
+        head.setText(Text.FREE_BADGE);
+        head.setTextColor(skin.text);
+        head.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        head.setTypeface(Typeface.DEFAULT_BOLD);
+        card.addView(head);
+
+        TextView body = new TextView(this);
+        body.setText(Text.FREE_BADGE_TEXT);
+        body.setTextColor(skin.text);
+        body.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        body.setPadding(0, dp(4), 0, 0);
+        card.addView(body);
+
+        TextView take = new TextView(this);
+        take.setText(Text.FREE_BADGE_TAKE);
+        take.setTextColor(0xFF10221F);
+        take.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        take.setTypeface(Typeface.DEFAULT_BOLD);
+        take.setGravity(Gravity.CENTER);
+        take.setPadding(0, dp(11), 0, dp(11));
+        GradientDrawable pill = new GradientDrawable();
+        pill.setColor(0xFF40E0D0);
+        pill.setCornerRadius(dp(14));
+        take.setBackground(pill);
+        LinearLayout.LayoutParams below = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        below.topMargin = dp(14);
+        take.setOnClickListener(v -> {
+            if (!Mine.everAsked()) {
+                Mine.ask(() -> Mine.takeFree((ok, trouble) -> {
+                    Screen.say(ok ? Text.FREE_BADGE_GOT : Text.MINE_TOO_OFTEN);
+                    rebuild();
+                }));
+                return;
+            }
+            Mine.takeFree((ok, trouble) -> {
+                Screen.say(ok ? Text.FREE_BADGE_GOT : Text.MINE_TOO_OFTEN);
+                rebuild();
+            });
+        });
+        card.addView(take, below);
+
+        LinearLayout holder = new LinearLayout(this);
+        holder.setPadding(skin.margin, dp(14), skin.margin, dp(2));
+        holder.addView(card, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return holder;
+    }
+
     // ------------------------------------------------------ the donation
 
     /**
@@ -655,6 +888,115 @@ public class SettingsActivity extends Activity {
             markChanged();
         });
         return sized(row, 56);
+    }
+
+    /**
+     * What opens, opens quickly.
+     *
+     * The screen is built again from nothing every time something is toggled,
+     * so there is no view to animate from one height to another -- what there
+     * is, is a view that was not there a moment ago. It fades in and rises a
+     * few pixels, over a seventh of a second: long enough to read as opening,
+     * short enough that nobody waits for it.
+     */
+    private View appear(View view) {
+        if (view == null) return null;
+        try {
+            view.setAlpha(0f);
+            view.setTranslationY(dp(-6));
+            view.animate().alpha(1f).translationY(0f).setDuration(140).start();
+        } catch (Throwable ignored) {
+        }
+        return view;
+    }
+
+    // ------------------------------------------------------ the texture packs
+
+    private static final int PICK_TEXTURES = 0x4D54;  // "MT"
+
+    private static final String TEXTURE_DOCS =
+            "https://github.com/narezany/MargyT/blob/main/docs/textures.md";
+
+    private View packRow(final Textures.Pack one) {
+        boolean chosen = one.file.equals(Textures.pack());
+        LinearLayout row = row();
+        row.addView(icon("image"));
+
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        text.addView(label(one.name));
+        String under = one.author.length() > 0 ? one.author : one.about;
+        if (!one.fits()) under = Text.TEXTURES_WRONG_VERSION + "  ·  " + one.tiktok;
+        if (under.length() > 0) text.addView(detail(under));
+        row.addView(text, grow());
+
+        if (chosen) row.addView(new Check(this, Accent.colour()));
+        row.setOnClickListener(v -> {
+            Textures.choose(chosen ? "" : one.file);
+            markChanged();
+        });
+        row.setOnLongClickListener(v -> {
+            Textures.remove(this, one.file);
+            markChanged();
+            return true;
+        });
+        return sized(row, 64);
+    }
+
+    private void exportTextures(final boolean withXml) {
+        Screen.progress(Text.TEXTURES_EXPORTING, 0);
+        Net.away("textures", () -> {
+            final java.io.File out = Textures.export(this, withXml);
+            runOnUiThread(() -> Screen.say(out == null
+                    ? Text.TEXTURES_FAILED : Text.TEXTURES_EXPORTED));
+        });
+    }
+
+    private void pickTextures() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            startActivityForResult(intent, PICK_TEXTURES);
+        } catch (Throwable error) {
+            Toast.makeText(this, String.valueOf(error), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** A value between nothing and something, set by dragging. */
+    private interface Chosen {
+        void at(int value);
+    }
+
+    private View slider(String title, int now, int most, final Chosen chosen) {
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        rows.setPadding(dp(16), dp(12), dp(16), dp(14));
+        rows.addView(label(title));
+
+        android.widget.SeekBar bar = new android.widget.SeekBar(this);
+        bar.setMax(most);
+        bar.setProgress(Math.min(now, most));
+        bar.getProgressDrawable().setColorFilter(
+                Accent.colour(), android.graphics.PorterDuff.Mode.SRC_IN);
+        bar.getThumb().setColorFilter(
+                Accent.colour(), android.graphics.PorterDuff.Mode.SRC_IN);
+        bar.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(android.widget.SeekBar seek, int value, boolean human) {
+            }
+
+            @Override
+            public void onStartTrackingTouch(android.widget.SeekBar seek) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(android.widget.SeekBar seek) {
+                chosen.at(seek.getProgress());
+            }
+        });
+        rows.addView(bar);
+        return rows;
     }
 
     /** How far the chosen background sits from the theme's own extreme. */
@@ -1319,6 +1661,12 @@ public class SettingsActivity extends Activity {
         Uri source = data.getData();
         if (source == null) return;
 
+        if (request == PICK_TEXTURES) {
+            if (Textures.install(this, source)) markChanged();
+            else Toast.makeText(this, Text.TEXTURES_FAILED, Toast.LENGTH_LONG).show();
+            rebuild();
+            return;
+        }
         if (request == PICK_FONT || request == PICK_EMOJI) {
             if (Fonts.take(this, source, request == PICK_EMOJI)) markChanged();
             else Toast.makeText(this, Text.FONT_FAILED, Toast.LENGTH_LONG).show();

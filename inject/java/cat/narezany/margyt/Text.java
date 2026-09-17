@@ -205,11 +205,14 @@ final class Text {
 
     static final String DONATE_BANNER_TEXT = pick(
             "Пожертвование от 250 ₽ даёт персональный значок рядом с ником — "
-                    + "его видят все, у кого установлен MargyT.",
-            "Пожертва від 250 ₽ дає персональний значок поруч із ніком — "
-                    + "його бачать усі, у кого встановлено MargyT.",
+                    + "его видят все, у кого установлен MargyT — и доступ в "
+                    + "закрытый чат для поддержавших.",
+            "Пожертва від 250 ₽ дає персональний значок поруч із ніком — його "
+                    + "бачать усі, у кого встановлено MargyT — і доступ до "
+                    + "закритого чату для тих, хто підтримав.",
             "A donation of 250 roubles or more comes with a personal badge beside "
-                    + "your name, visible to everyone running MargyT.");
+                    + "your name, visible to everyone running MargyT, and the chat "
+                    + "that is only for people who have.");
 
     static final String DONATE_BANNER_HOW = pick(
             "После перевода напишите @narezany в Telegram или TikTok и приложите "
@@ -229,9 +232,12 @@ final class Text {
             "Нравится MargyT?", "Подобається MargyT?", "Enjoying MargyT?");
 
     static final String REMIND_TEXT = pick(
-            "Поддержи разработку и получи свой значок рядом с ником.",
-            "Підтримай розробку й отримай свій значок поруч із ніком.",
-            "Support the making of it and get a badge beside your name.");
+            "Поддержи разработку — получишь свой значок рядом с ником и доступ "
+                    + "в закрытый чат для поддержавших.",
+            "Підтримай розробку — отримаєш свій значок поруч із ніком і доступ "
+                    + "до закритого чату для тих, хто підтримав.",
+            "Support the making of it: a badge of your own beside your name, and "
+                    + "the chat that is only for people who have.");
 
     static final String REMIND_MORE = pick("Подробнее", "Докладніше", "Tell me more");
 
@@ -261,6 +267,131 @@ final class Text {
     static final String CAT_WAIT = pick(
             "Коты ещё едут, попробуй ещё раз", "Коти ще їдуть, спробуй ще раз",
             "The cats are still on their way; try again");
+
+    static final String HIDE_LIVE = pick(
+            "Скрыть трансляции", "Сховати трансляції", "Hide live rooms");
+
+    static final String HIDE_PHOTOS = pick(
+            "Скрыть фото-посты", "Сховати фото-пости", "Hide slideshows");
+
+    static final String DIM = pick(
+            "Анти-выгорание", "Анти-вигоряння", "Stop the screen burning in");
+
+    static final String DIM_HOW = pick(
+            "Насколько приглушить", "Наскільки приглушити", "How far down");
+
+    static final String DIM_NOTE = pick(
+            "Приглушает кнопки, подпись и перемотку поверх видео — они стоят на "
+                    + "месте часами и выжигаются в экран. Нажимаются они так же.",
+            "Приглушує кнопки, підпис і перемотку поверх відео — вони стоять на "
+                    + "місці годинами й випалюються в екран. Натискаються так само.",
+            "Turns down the buttons, the caption and the scrubbing bar over the "
+                    + "video: they sit in one place for hours and wear the panel. "
+                    + "They still work exactly as they did.");
+
+    // ------------------------------------------------------ the texture packs
+
+    static final String TEXTURES = pick("Текстурпаки", "Текстурпаки", "Texture packs");
+
+    static final String TEXTURES_ON = pick(
+            "Включить текстурпак", "Увімкнути текстурпак", "Use a texture pack");
+
+    static final String TEXTURES_EXPORT = pick(
+            "Выгрузить картинки", "Вивантажити картинки", "Write the pictures out");
+
+    static final String TEXTURES_EXPORT_XML = pick(
+            "Выгрузить вместе с xml", "Вивантажити разом з xml",
+            "Write them out with the xml");
+
+    static final String TEXTURES_EXPORT_XML_NOTE = pick(
+            "Тяжелее и почти всё там не правится руками",
+            "Важче, і майже все там не редагується руками",
+            "Heavier, and most of it cannot be edited by hand");
+
+    static final String TEXTURES_EXPORT_NOTE = pick(
+            "Файл .margytex со всеми картинками сборки, в Downloads/MargyT",
+            "Файл .margytex з усіма картинками збірки, у Downloads/MargyT",
+            "A .margytex of every picture in this build, into Downloads/MargyT");
+
+    static final String TEXTURES_EXPORTING = pick(
+            "Собираю текстуры", "Збираю текстури", "Writing the textures out");
+
+    static final String TEXTURES_EXPORTED = pick(
+            "Готово, файл в Downloads/MargyT", "Готово, файл у Downloads/MargyT",
+            "Done -- the file is in Downloads/MargyT");
+
+    static final String TEXTURES_INSTALL = pick(
+            "Загрузить текстурпак", "Завантажити текстурпак", "Add a texture pack");
+
+    static final String TEXTURES_INSTALL_NOTE = pick(
+            "файл .margytex с папкой res внутри", "файл .margytex з текою res усередині",
+            "a .margytex with a res folder in it");
+
+    static final String TEXTURES_FAILED = pick(
+            "В этом файле нет картинок из res", "У цьому файлі немає картинок з res",
+            "That file has nothing under res in it");
+
+    static final String TEXTURES_DOCS = pick(
+            "Как сделать текстурпак", "Як зробити текстурпак",
+            "How to make a texture pack");
+
+    static final String TEXTURES_DOCS_NOTE = pick(
+            "Документация на GitHub", "Документація на GitHub",
+            "The documentation on GitHub");
+
+    static final String TEXTURES_WRONG_VERSION = pick(
+            "Для другой версии TikTok", "Для іншої версії TikTok",
+            "For a different TikTok");
+
+    static final String TEXTURES_NONE = pick(
+            "Пока ни одного", "Поки жодного", "None yet");
+
+    static final String TEXTURES_NOTE = pick(
+            "Пак сделан под конкретную версию TikTok. На другой версии часть "
+                    + "картинок просто не подставится — ничего не сломается.",
+            "Пак зроблено під конкретну версію TikTok. На іншій версії частина "
+                    + "картинок просто не підставиться — нічого не зламається.",
+            "A pack is drawn against one version of TikTok. On another, some "
+                    + "pictures simply are not swapped -- nothing breaks.");
+
+    // ------------------------------------------------------------ own badges
+
+    static final String MINE = pick("Мои значки", "Мої значки", "My badges");
+
+    static final String MINE_NOTE = pick(
+            "Порядок и что показывать. Сохраняется на сервере, видно всем.",
+            "Порядок і що показувати. Зберігається на сервері, видно всім.",
+            "The order, and which to show. Kept on the server, seen by everyone.");
+
+    static final String MINE_NONE = pick(
+            "У этого аккаунта пока нет значков", "У цього акаунта поки немає значків",
+            "This account has no badges yet");
+
+    static final String MINE_WAIT = pick("Спрашиваю сервер…", "Питаю сервер…",
+            "Asking the server...");
+
+    static final String MINE_SAVED = pick("Сохранено", "Збережено", "Saved");
+
+    static final String MINE_TOO_OFTEN = pick(
+            "Не чаще раза в минуту", "Не частіше разу на хвилину",
+            "Once a minute at most");
+
+    static final String FREE_BADGE = pick(
+            "Бесплатный значок олда!", "Безкоштовний значок олда!",
+            "A free badge for the old lot");
+
+    static final String FREE_BADGE_TEXT = pick(
+            "Бирюзовый значок «Использовал MargyT до 24-го сентября». "
+                    + "После 24-го его больше не выдадут — ни за что.",
+            "Бірюзовий значок «Користувався MargyT до 24-го вересня». "
+                    + "Після 24-го його більше не видадуть — ні за що.",
+            "A turquoise badge that says you were here before the 24th of "
+                    + "September. After that nobody gets one, at any price.");
+
+    static final String FREE_BADGE_TAKE = pick("Забрать", "Забрати", "Take it");
+
+    static final String FREE_BADGE_GOT = pick(
+            "Значок твой", "Значок твій", "It is yours");
 
     static final String SAVE = pick("Сохранить", "Зберегти", "Save");
 

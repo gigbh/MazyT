@@ -40,6 +40,54 @@ public final class Popup {
         show(context, title, message, null);
     }
 
+    /**
+     * The same window with one picture under the words, drawn large.
+     *
+     * A badge is a few pixels beside a name and this is the one place it can
+     * be looked at properly, so it is drawn at a size worth looking at rather
+     * than at the size it sits at.
+     */
+    public static void show(Context context, String title, String message,
+                            String button, final android.graphics.drawable.Drawable picture) {
+        try {
+            Skin skin = Skin.remembered(context);
+            Dialog dialog = new Dialog(context);
+            Window window = dialog.getWindow();
+            if (window != null) {
+                dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+                window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                window.setDimAmount(0.6f);
+            }
+
+            View card = card(context, skin, title, message, button, dialog);
+            if (picture != null && card instanceof LinearLayout) {
+                android.widget.ImageView view = new android.widget.ImageView(context);
+                view.setImageDrawable(picture);
+                view.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+                LinearLayout.LayoutParams where = new LinearLayout.LayoutParams(
+                        dp(context, 96), dp(context, 96));
+                where.gravity = Gravity.CENTER_HORIZONTAL;
+                where.topMargin = dp(context, 16);
+                LinearLayout holder = (LinearLayout) card;
+                holder.addView(view, Math.max(0, holder.getChildCount() - 1), where);
+            }
+
+            dialog.setContentView(card);
+            dialog.setCanceledOnTouchOutside(true);
+            dialog.show();
+
+            if (window != null) {
+                WindowManager.LayoutParams params = window.getAttributes();
+                params.width = Math.min(dp(context, 320),
+                        (int) (context.getResources().getDisplayMetrics().widthPixels * 0.86f));
+                params.gravity = Gravity.CENTER;
+                window.setAttributes(params);
+            }
+        } catch (Throwable error) {
+            Diary.note("popup: " + error);
+        }
+    }
+
     public static void show(Context context, String title, String message,
                             String button, String[][] pictures, String[] captions) {
         try {

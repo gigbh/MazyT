@@ -275,27 +275,6 @@ public final class Cats {
                 card.addView(from);
             }
 
-            TextView yours = new TextView(context);
-            yours.setText(Text.CAT_YOURS);
-            yours.setTextColor(Accent.colour());
-            yours.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-            yours.setGravity(Gravity.CENTER);
-            yours.setPadding(0, dp(context, 12), 0, 0);
-            yours.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    try {
-                        android.content.Intent go = new android.content.Intent(
-                                android.content.Intent.ACTION_VIEW,
-                                android.net.Uri.parse("https://t.me/narezany"));
-                        go.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-                        v.getContext().startActivity(go);
-                    } catch (Throwable ignored) {
-                    }
-                }
-            });
-            card.addView(yours);
-
             dialog.setContentView(card);
             dialog.setCanceledOnTouchOutside(true);
             dialog.show();

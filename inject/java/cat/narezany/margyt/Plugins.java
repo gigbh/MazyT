@@ -69,6 +69,8 @@ public final class Plugins {
         public final String description;
         public final String entry;
         public final int minApi;
+        /** The TikTok it was written against, or empty for any. */
+        public final String tiktok;
         public final File folder;
 
         /** Why it is not running, or null when it is fine. */
@@ -78,7 +80,7 @@ public final class Plugins {
         private boolean iconRead;
 
         Info(String id, String name, String version, String author, String description,
-             String entry, int minApi, File folder) {
+             String entry, int minApi, String tiktok, File folder) {
             this.id = id;
             this.name = name;
             this.version = version;
@@ -86,6 +88,7 @@ public final class Plugins {
             this.description = description;
             this.entry = entry;
             this.minApi = minApi;
+            this.tiktok = tiktok;
             this.folder = folder;
         }
 
@@ -199,11 +202,20 @@ public final class Plugins {
                     localised(json, "description", ""),
                     json.optString("entry", ""),
                     json.optInt("min_api", 1),
+                    json.optString("tiktok", ""),
                     folder);
             if (info.entry.isEmpty()) info.trouble = "manifest has no entry class";
             if (info.minApi > MargyPlugin.API) {
                 info.trouble = "wants MargyT plugin api " + info.minApi
                         + ", this one is " + MargyPlugin.API;
+            }
+            // a plugin that names the TikTok it was written against is not run
+            // on another one. Everything a plugin reaches into is renamed
+            // between releases, so a plugin that guesses wrong does not fail
+            // politely -- it fails in the middle of somebody's feed.
+            if (info.tiktok.length() > 0 && !info.tiktok.equals(Version.TIKTOK)) {
+                info.trouble = "written for TikTok " + info.tiktok
+                        + ", this is " + Version.TIKTOK;
             }
             return info;
         } catch (Throwable error) {
@@ -341,6 +353,88 @@ public final class Plugins {
     }
 
     /** In the drawing path: the empty case has to cost nothing. */
+    // ------------------------------------------------ what plugins are told
+
+    /** A screen came up; every plugin hears about it by name. */
+    public static void screen(Activity activity) {
+        MargyPlugin[] plugins = running;
+        if (activity == null || plugins.length == 0) return;
+        String name = activity.getClass().getName();
+        for (MargyPlugin plugin : plugins) {
+            try {
+                plugin.onScreen(activity, name);
+            } catch (Throwable error) {
+                drop(plugin, error);
+            }
+        }
+    }
+
+    /** A page of the feed, passed through every plugin in turn. */
+    public static java.util.List feed(java.util.List posts) {
+        MargyPlugin[] plugins = running;
+        if (plugins.length == 0) return posts;
+        java.util.List out = posts;
+        for (MargyPlugin plugin : plugins) {
+            try {
+                java.util.List said = plugin.onFeed(out);
+                if (said != null) out = said;
+            } catch (Throwable error) {
+                drop(plugin, error);
+            }
+        }
+        return out;
+    }
+
+    /** A name about to be drawn, before the mod's own badges go on it. */
+    public static String name(String uid, String name) {
+        MargyPlugin[] plugins = running;
+        if (plugins.length == 0) return name;
+        String out = name;
+        for (MargyPlugin plugin : plugins) {
+            try {
+                String said = plugin.onName(uid, out);
+                if (said != null) out = said;
+            } catch (Throwable error) {
+                drop(plugin, error);
+            }
+        }
+        return out;
+    }
+
+    /** Rows a plugin has asked for in the mod's own settings. */
+    public static final class Row {
+        public final String plugin;
+        public final String title;
+        public final String detail;
+        public final cat.narezany.margyt.plugin.PluginContext.Tapped action;
+
+        Row(String plugin, String title, String detail,
+            cat.narezany.margyt.plugin.PluginContext.Tapped action) {
+            this.plugin = plugin;
+            this.title = title;
+            this.detail = detail;
+            this.action = action;
+        }
+    }
+
+    private static final java.util.List<Row> rows = new java.util.ArrayList<Row>();
+
+    public static void addRow(String plugin, String title, String detail,
+                              cat.narezany.margyt.plugin.PluginContext.Tapped action) {
+        synchronized (rows) {
+            for (Row row : rows) {
+                if (row.plugin.equals(plugin) && row.title.equals(title)) return;
+            }
+            rows.add(new Row(plugin, title, detail, action));
+        }
+    }
+
+    public static java.util.List<Row> rows() {
+        synchronized (rows) {
+            return new java.util.ArrayList<Row>(rows);
+        }
+    }
+
     public static int colour(int colour) {
         MargyPlugin[] plugins = running;
         if (plugins.length == 0) return colour;
@@ -386,6 +480,10 @@ public final class Plugins {
             if (info.minApi > MargyPlugin.API) {
                 throw new Exception("the plugin wants api " + info.minApi
                         + " and this MargyT has " + MargyPlugin.API);
+            }
+            if (info.tiktok.length() > 0 && !info.tiktok.equals(Version.TIKTOK)) {
+                throw new Exception("the plugin was written for TikTok " + info.tiktok
+                        + " and this is " + Version.TIKTOK);
             }
 
             File home = new File(home(context), safe(info.id));

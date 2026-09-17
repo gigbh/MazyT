@@ -51,6 +51,7 @@ public final class SettingsRow implements Application.ActivityLifecycleCallbacks
     @Override
     public void onActivityResumed(Activity activity) {
         Plugins.onActivityResumed(activity);
+        Plugins.screen(activity);
         Screen.at(activity);
         Updater.resumed(activity);
         Themes.watch(activity);

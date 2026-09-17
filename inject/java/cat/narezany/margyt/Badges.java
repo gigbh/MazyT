@@ -36,13 +36,20 @@ public final class Badges {
 
     private Badges() {}
 
-    /** Where the file lives. Raw, so no page has to be parsed to find it. */
-    private static final String SOURCE =
-            "https://raw.githubusercontent.com/narezany/MargyT/main/badges.json";
-    private static final String FILES =
-            "https://raw.githubusercontent.com/narezany/MargyT/main/";
+    /**
+     * Where the badges live now.
+     *
+     * They used to be a file in the repository, which worked and cost nothing
+     * and had two limits worth leaving it for: granting one meant a commit,
+     * and nobody could decide anything about their own. So there is a small
+     * service instead, and it answers with the same shape the file had.
+     */
+    public static final String SERVER = "http://212.192.210.234";
 
-    private static final long EVERY = 5 * 60 * 1000L;
+    private static final String SOURCE = SERVER + "/badges";
+    private static final String FILES = SERVER + "/icon/";
+
+    private static final long EVERY = 2 * 60 * 1000L;
 
     /** One badge, as the file describes it. */
     public static final class Badge {
@@ -144,6 +151,14 @@ public static final String KEY = "badges_on";
 
     private static volatile boolean started;
 
+    /** One badge by the name the server gives it. */
+    public static Badge byId(String id) {
+        for (Badge badge : numbered) {
+            if (badge != null && badge.id.equals(id)) return badge;
+        }
+        return null;
+    }
+
     public static Badge[] of(String uid) {
         if (uid == null) return null;
         return known.get(uid);
@@ -213,22 +228,40 @@ public static final String KEY = "badges_on";
         });
     }
 
+    /** What the server said last time, so it need not say it again. */
+    private static volatile String tag;
+
     private static void refresh(final Context context) {
         Net.away("badges", new Runnable() {
             @Override
             public void run() {
-                byte[] fresh = Net.bytes(SOURCE);
-                if (fresh == null) return;
-                byte[] old = Net.read(file(context));
-                if (old != null && java.util.Arrays.equals(old, fresh)) return;
-                if (apply(fresh)) {
-                    Net.save(file(context), fresh);
+                // The server answers 304 when nothing has changed, which is
+                // most of the time -- so asking every two minutes costs a few
+                // hundred bytes rather than the whole list.
+                Net.Answer said = Net.fetch(SOURCE, tag);
+                if (said == null || said.unchanged) return;
+                tag = said.tag;
+                if (said.body == null) return;
+                if (apply(said.body)) {
+                    Net.save(file(context), said.body);
                     prefetch(context);
                     Diary.note("badges: " + known.size() + " accounts, "
                             + numbered.length + " badges");
                 }
             }
         });
+    }
+
+    /** When the free badge stops being given out, as the server reckons it. */
+    private static volatile long freeUntil;
+    private static volatile long serverNow;
+    private static volatile long readAt;
+
+    /** Whether the offer is still open, by the server's clock and not ours. */
+    public static boolean freeStillOpen() {
+        if (serverNow <= 0) return false;
+        long since = (android.os.SystemClock.elapsedRealtime() - readAt) / 1000;
+        return serverNow + since < freeUntil;
     }
 
     /**
@@ -257,6 +290,13 @@ public static final String KEY = "badges_on";
             JSONObject root = new JSONObject(new String(json, "UTF-8"));
             JSONArray list = root.optJSONArray("badges");
             if (list == null) return false;
+            long until = root.optLong("free_until", 0);
+            long now = root.optLong("now", 0);
+            if (until > 0 && now > 0) {
+                freeUntil = until;
+                serverNow = now;
+                readAt = android.os.SystemClock.elapsedRealtime();
+            }
 
             Map<String, java.util.List<Badge>> built =
                     new HashMap<String, java.util.List<Badge>>();

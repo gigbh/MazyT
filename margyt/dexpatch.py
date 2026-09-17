@@ -391,6 +391,36 @@ COLOUR_SOURCES: List[Tuple[str, str, str]] = [
     ("Landroid/view/View;", "setBackgroundResource",
      "(I)V", "(Landroid/view/View;I)V"),
 
+    # where a picture is asked for by number, which is where a texture pack
+    # gets to answer instead
+    ("Landroid/content/Context;", "getDrawable",
+     "(I)Landroid/graphics/drawable/Drawable;",
+     "(Landroid/content/Context;I)Landroid/graphics/drawable/Drawable;"),
+    ("Landroid/content/res/Resources;", "getDrawable",
+     "(I)Landroid/graphics/drawable/Drawable;",
+     "(Landroid/content/res/Resources;I)Landroid/graphics/drawable/Drawable;"),
+    ("Landroid/content/res/Resources;", "getDrawable",
+     "(ILandroid/content/res/Resources$Theme;)Landroid/graphics/drawable/Drawable;",
+     "(Landroid/content/res/Resources;ILandroid/content/res/Resources$Theme;)"
+     "Landroid/graphics/drawable/Drawable;"),
+    ("Landroid/widget/ImageView;", "setImageResource",
+     "(I)V", "(Landroid/widget/ImageView;I)V"),
+
+    # A Lottie animation -- the heart, the loading spinners -- is a json file
+    # rather than a picture, read as a stream. Which makes it the one thing in
+    # a texture pack somebody can edit in a text editor.
+    ("Landroid/content/res/Resources;", "openRawResource",
+     "(I)Ljava/io/InputStream;",
+     "(Landroid/content/res/Resources;I)Ljava/io/InputStream;"),
+    ("Landroid/content/res/AssetManager;", "open",
+     "(Ljava/lang/String;)Ljava/io/InputStream;",
+     "(Landroid/content/res/AssetManager;Ljava/lang/String;)Ljava/io/InputStream;"),
+
+    # how far down a view is turned. TikTok fades its own overlay in and out
+    # all the time -- when a video pauses, when a panel opens -- and every one
+    # of those put back the brightness the mod had taken off
+    ("Landroid/view/View;", "setAlpha", "(F)V", "(Landroid/view/View;F)V"),
+
     # a colour that comes with a state to go with it: enabled, pressed, chosen
     ("Landroid/content/res/Resources;", "getColorStateList",
      "(I)Landroid/content/res/ColorStateList;",

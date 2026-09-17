@@ -50,13 +50,13 @@ public final class Badge {
 
     public static String getNickname(User user) {
         if (user == null) return null;
-        return marked(user.getNickname(), user.getUid());
+        return marked(user.getNickname(), user.getUid(), false);
     }
 
     /** The same name, off the model a loaded profile uses instead. */
     public static String getNickname(UserProfileInfo user) {
         if (user == null) return null;
-        return marked(user.getNickname(), user.getUid());
+        return marked(user.getNickname(), user.getUid(), true);
     }
 
     /**
@@ -67,7 +67,7 @@ public final class Badge {
      * name it is handing back a name this has already been through -- and
      * marking it again gave everybody two badges and two prefixes.
      */
-    private static String marked(String name, String uid) {
+    private static String marked(String name, String uid, boolean fromProfile) {
         if (name == null || name.length() == 0) return name;
         try {
             // Cleared first, always. Whatever marks are on the way in are
@@ -76,8 +76,8 @@ public final class Badge {
             // somebody typed into their own name to wear a badge they were
             // never given. Neither survives; only what the account is owed is
             // put back.
-            String own = strip(name);
-            remember(uid, own);
+            String own = Plugins.name(uid, strip(name));
+            remember(uid, own, fromProfile);
             String marks = Badges.marksFor(uid);
             if (marks.length() > 0) return own + '\u2009' + marks;
             return own;
@@ -109,8 +109,16 @@ public final class Badge {
 
     private static final long RECENT = 3000;
 
-    private static void remember(String uid, String name) {
-        if (uid == null || name == null || name.length() == 0) return;
+    /**
+     * Only a profile's own model counts.
+     *
+     * A name read off `User` is read everywhere -- under every video, beside
+     * every comment -- and remembering those is what put a badge on the word
+     * somebody typed into a comment. `UserProfileInfo` is asked for a name by
+     * one screen and one screen only.
+     */
+    private static void remember(String uid, String name, boolean fromProfile) {
+        if (!fromProfile || uid == null || name == null || name.length() == 0) return;
         try {
             if (Badges.marksFor(uid).length() == 0) return;
             lastName = name;
@@ -143,15 +151,26 @@ public final class Badge {
     private static final int DEEP = 40;
     private static final int BUDGET = 4000;
 
+    private static boolean inAList(View view) {
+        String name = view.getClass().getName();
+        return name.contains("RecyclerView") || name.contains("ListView")
+                || name.contains("ViewPager");
+    }
+
     private static int seen;
 
     private static void walk(View view, int depth, String name, String uid) {
         if (view == null || depth > DEEP || ++seen > BUDGET) return;
+        // A list is where the mod has no business rewriting text: a comment,
+        // a message, a search result is somebody's words, and a word that
+        // happens to be a name is still their word. A profile's own name is
+        // not in a list -- it is in the header above one.
+        if (inAList(view)) return;
         if (view instanceof TextView) {
             TextView text = (TextView) view;
             CharSequence showing = text.getText();
             if (showing != null && name.contentEquals(showing)) {
-                String out = marked(showing.toString(), uid);
+                String out = marked(showing.toString(), uid, false);
                 if (!out.equals(showing.toString())) setText(text, out);
             }
         }
@@ -163,6 +182,52 @@ public final class Badge {
     }
 
     /**
+     * Anything being typed, cleared of the characters a badge is made of.
+     *
+     * A mark is invisible, so one that ends up in a box is one nobody can see
+     * to delete: edit a name that has a badge on it and the mark comes with
+     * it, and what gets saved is a name with somebody's badge inside it --
+     * after which the mod adds its own and there are two. Every box is watched
+     * as well as cleared, because text can arrive in one by being pasted.
+     */
+    private static CharSequence typed(TextView view, CharSequence text) {
+        watch(view);
+        if (text == null) return text;
+        String cleaned = strip(text.toString());
+        return cleaned.equals(text.toString()) ? text : cleaned;
+    }
+
+    private static void watch(TextView view) {
+        if (Boolean.TRUE.equals(view.getTag(WATCHED))) return;
+        try {
+            view.setTag(WATCHED, Boolean.TRUE);
+            view.addTextChangedListener(new android.text.TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int a, int b, int c) {
+                }
+
+                @Override
+                public void onTextChanged(CharSequence s, int a, int b, int c) {
+                }
+
+                @Override
+                public void afterTextChanged(android.text.Editable text) {
+                    try {
+                        for (int i = text.length() - 1; i >= 0; i--) {
+                            if (Badges.isPrivate(text.charAt(i))) text.delete(i, i + 1);
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                }
+            });
+        } catch (Throwable ignored) {
+        }
+    }
+
+    // another key of its own: "Marh" + 1
+    private static final int WATCHED = 0x4D61726B;
+
+    /**
      * Every piece of text on its way into a TextView passes here.
      *
      * Which is a great many of them, so the common case is a type check and a
@@ -170,6 +235,10 @@ public final class Badge {
      */
     public static void setText(TextView view, CharSequence text) {
         Fonts.apply(view);
+        if (view instanceof android.widget.EditText) {
+            view.setText(typed(view, text));
+            return;
+        }
         CharSequence out = marked(view, text);
         // asking for it to be kept spannable, because a TextView told to store
         // plain text copies the spans into an immutable SpannedString and the
@@ -183,6 +252,10 @@ public final class Badge {
 
     public static void setText(TextView view, CharSequence text, TextView.BufferType type) {
         Fonts.apply(view);
+        if (view instanceof android.widget.EditText) {
+            view.setText(typed(view, text), type);
+            return;
+        }
         CharSequence out = marked(view, text);
         view.setText(out, out != text ? TextView.BufferType.SPANNABLE : type);
     }
@@ -259,6 +332,31 @@ public final class Badge {
                 ? name.substring(0, name.length() - 1) : name;
     }
 
+    /** The badge at a size worth looking at, for the window it opens. */
+    private static Drawable large(View view, Badges.Badge badge) {
+        try {
+            Bitmap bitmap = badge.image.length() == 0
+                    ? null : Badges.picture(view.getContext(), badge.image);
+            Drawable drawable;
+            if (bitmap != null) {
+                drawable = new BitmapDrawable(view.getResources(), bitmap);
+                if (badge.colour != 0) {
+                    drawable.setColorFilter(badge.colour, PorterDuff.Mode.SRC_IN);
+                }
+            } else {
+                Drawable own = note();
+                if (own == null) return null;
+                drawable = own.getConstantState() == null
+                        ? own : own.getConstantState().newDrawable().mutate();
+                drawable.setColorFilter(badge.colour != 0 ? badge.colour : MINT,
+                        PorterDuff.Mode.SRC_IN);
+            }
+            return drawable;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
     /** Sized to the text it sits in, so it matches whatever draws it. */
     private static Drawable picture(TextView view, Badges.Badge badge) {
         Bitmap bitmap = badge.image.length() == 0
@@ -313,7 +411,8 @@ public final class Badge {
 
         @Override
         public void onClick(View widget) {
-            Popup.show(widget.getContext(), badge.title, badge.text, badge.button);
+            Popup.show(widget.getContext(), badge.title, badge.text, badge.button,
+                    large(widget, badge));
         }
 
         @Override

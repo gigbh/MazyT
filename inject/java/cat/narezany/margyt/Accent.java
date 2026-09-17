@@ -236,10 +236,24 @@ public final class Accent {
      * shared with everything else that asked for it.
      */
     public static Drawable getDrawable(TypedArray array, int index) {
+        try {
+            int id = array.getResourceId(index, 0);
+            Drawable swapped = Textures.forResource(Margy.context(), id);
+            if (swapped != null) return swapped;
+        } catch (Throwable ignored) {
+        }
         return moved(array.getDrawable(index));
     }
 
     public static void setBackgroundResource(View view, int id) {
+        try {
+            Drawable swapped = Textures.forResource(view.getContext(), id);
+            if (swapped != null) {
+                view.setBackground(swapped);
+                return;
+            }
+        } catch (Throwable ignored) {
+        }
         try {
             Drawable drawable = view.getContext().getDrawable(id);
             Drawable out = moved(drawable);
@@ -338,6 +352,68 @@ public final class Accent {
         int[] out = new int[colours.length];
         for (int i = 0; i < colours.length; i++) out[i] = swap(colours[i]);
         shape.setColors(out);
+    }
+
+    // ----------------------------------------------------- pictures by number
+
+    /**
+     * A picture asked for by number, which a texture pack may answer instead.
+     *
+     * Every one of these hands back what TikTok would have got when no pack is
+     * on or the pack has nothing at that path -- which is nearly every call,
+     * so the check has to be, and is, a flag and a lookup.
+     */
+    public static Drawable getDrawable(Context context, int id) {
+        Drawable swapped = Textures.forResource(context, id);
+        return swapped != null ? swapped : moved(context.getDrawable(id));
+    }
+
+    public static Drawable getDrawable(Resources resources, int id) {
+        Drawable swapped = Textures.forResource(Margy.context(), id);
+        return swapped != null ? swapped : moved(resources.getDrawable(id));
+    }
+
+    public static Drawable getDrawable(Resources resources, int id, Resources.Theme theme) {
+        Drawable swapped = Textures.forResource(Margy.context(), id);
+        return swapped != null ? swapped : moved(resources.getDrawable(id, theme));
+    }
+
+    public static void setImageResource(ImageView view, int id) {
+        Drawable swapped = Textures.forResource(view.getContext(), id);
+        if (swapped != null) view.setImageDrawable(swapped);
+        else view.setImageResource(id);
+    }
+
+    /**
+     * A file read as a stream, which is how an animation arrives.
+     *
+     * The heart that fills in when a video is liked is not a picture at all --
+     * it is a Lottie animation, a json file describing how shapes move. Which
+     * makes it the one thing in a texture pack that can be edited in a text
+     * editor, so a pack gets to answer for these as well.
+     */
+    public static java.io.InputStream openRawResource(Resources resources, int id) {
+        java.io.InputStream swapped = Textures.stream(Margy.context(), id);
+        return swapped != null ? swapped : resources.openRawResource(id);
+    }
+
+    public static java.io.InputStream open(android.content.res.AssetManager assets,
+                                           String name) throws java.io.IOException {
+        java.io.InputStream swapped = Textures.asset(name);
+        return swapped != null ? swapped : assets.open(name);
+    }
+
+    /**
+     * A view being faded by TikTok itself.
+     *
+     * The overlay fades in and out constantly -- a video pauses, a panel opens
+     * -- and every one of those set the brightness back to what TikTok wanted,
+     * undoing the anti burn-in. So the two are combined rather than fighting:
+     * whatever TikTok asks for is multiplied by how far down the setting says
+     * that view should be.
+     */
+    public static void setAlpha(View view, float alpha) {
+        view.setAlpha(Dim.alphaFor(view, alpha));
     }
 
     public static void setColor(Paint paint, int colour) {

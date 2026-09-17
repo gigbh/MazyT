@@ -29,6 +29,8 @@ public final class Feed {
     private Feed() {}
 
     public static final String KEY = "hide_ads";
+    public static final String KEY_LIVE = "hide_live";
+    public static final String KEY_PHOTOS = "hide_photos";
 
     private static volatile Boolean cached;
 
@@ -50,6 +52,53 @@ public final class Feed {
         cached = enabled;
         SharedPreferences prefs = prefs();
         if (prefs != null) prefs.edit().putBoolean(KEY, enabled).apply();
+    }
+
+    // --------------------------------------------- what else to leave out
+
+    public static boolean hides(String key) {
+        SharedPreferences prefs = prefs();
+        return prefs != null && prefs.getBoolean(key, false);
+    }
+
+    public static void setHides(String key, boolean on) {
+        SharedPreferences prefs = prefs();
+        if (prefs != null) prefs.edit().putBoolean(key, on).apply();
+    }
+
+    /** TikTok's own number for a live room in the feed. */
+    private static final int LIVE = 101;
+
+    private static boolean isLive(Aweme post) {
+        try {
+            if (post.getAwemeType() == LIVE) return true;
+            if (post.getLiveId() != 0) return true;
+            return post.getRoomFeedCellStruct() != null;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static boolean isPhotos(Aweme post) {
+        try {
+            return post.getPhotoModeImageInfo() != null;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    /** Whether this post is one the person asked not to see. */
+    private static boolean unwanted(Object item) {
+        if (!(item instanceof Aweme)) return false;
+        Aweme post = (Aweme) item;
+        try {
+            if (isEnabled() && post.isAd()) return true;
+            if (hides(KEY_LIVE) && isLive(post)) return true;
+            if (isLive(post)) return false;   // a room is neither a photo nor a video
+            if (hides(KEY_PHOTOS) && isPhotos(post)) return true;
+        } catch (Throwable ignored) {
+        }
+        return false;
     }
 
     private static SharedPreferences prefs() {
@@ -78,22 +127,25 @@ public final class Feed {
     public static List getItems(FeedItemList page) {
         if (page == null) return null;
         List items = page.getItems();
-        if (items == null || !isEnabled()) return items;
+        if (items == null) return items;
+        if (!isEnabled() && !hides(KEY_LIVE) && !hides(KEY_PHOTOS)) {
+            return Plugins.feed(items);
+        }
         try {
-            int ads = 0;
+            int out = 0;
             for (Object item : items) {
-                if (item instanceof Aweme && ((Aweme) item).isAd()) ads++;
+                if (unwanted(item)) out++;
             }
-            if (ads == 0) return items;
+            if (out == 0) return items;
 
-            List kept = new ArrayList(items.size() - ads);
+            List kept = new ArrayList(items.size() - out);
             for (Object item : items) {
-                if (item instanceof Aweme && ((Aweme) item).isAd()) continue;
+                if (unwanted(item)) continue;
                 kept.add(item);
             }
-            dropped += ads;
-            Diary.note("feed: " + ads + " ad(s) dropped, " + dropped + " so far");
-            return kept;
+            dropped += out;
+            Diary.note("feed: " + out + " left out, " + dropped + " so far");
+            return Plugins.feed(kept);
         } catch (Throwable error) {
             Diary.note("feed: leaving the page alone, " + error);
             return items;

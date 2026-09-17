@@ -172,3 +172,78 @@ longer means what the plugin thought.
 | api | MargyT | What changed |
 |---|---|---|
 | 1 | 0.4 | The first one: start, the three activity hooks, colour, region. |
+
+## What a plugin is told (API 2)
+
+Beyond starting and stopping, a plugin hears about what the app is doing.
+
+```java
+@Override
+public void onScreen(Activity activity, String name) {}
+```
+
+A screen came up, by the class that draws it. The names are TikTok's own and
+most are renamed every release, which is why the name is handed over rather
+than an enum of screens this mod would have to keep in step with. The one that
+is stable is `com.ss.android.ugc.aweme.main.MainActivity` -- the feed, the
+inbox and the profile are all fragments inside it.
+
+```java
+@Override
+public java.util.List onFeed(java.util.List posts) { return posts; }
+```
+
+A page of the feed, before anything has drawn it. Return it as it came to
+leave it alone, or a list with things left out. The items are TikTok's own
+`Aweme` objects; read them by reflection or by compiling against a stub of
+your own.
+
+```java
+@Override
+public String onName(String uid, String name) { return name; }
+```
+
+A name about to be written somewhere, with the account it belongs to. The
+mod's own badges go on after this, so returning a bare name does not take
+anybody's badge away.
+
+```java
+@Override
+public CharSequence onText(CharSequence text) { return text; }
+```
+
+Text on its way into a view.
+
+## Putting something on the screen
+
+```java
+margyt().addSettingsRow("Title", "the line under it", () -> { ... });
+margyt().showWindow("Title", "A sentence.");
+margyt().offer("Do the thing", () -> { ... });
+margyt().progress("Working", 40);
+margyt().progressGone();
+Activity now = margyt().screen();
+```
+
+`addSettingsRow` puts a row in the mod's own settings under the plugin's
+heading. `offer` is the floating button the mod uses for saving a sticker: it
+sits over whatever screen is up and goes when that screen does. `showWindow`
+is the mod's own dialog, drawn from the colours measured off TikTok's settings
+screen, so it matches whatever theme is on.
+
+**A plugin cannot declare an Android component of its own.** Activities,
+services and receivers are read out of the manifest when the app is installed,
+and a plugin arrives long after that. What it can do instead is everything
+short of one: its own views on an existing screen, the mod's own window, and
+an ordinary `Intent` if it really does want a screen from another app.
+
+## Off the main thread
+
+```java
+margyt().away("fetching", () -> {
+    byte[] raw = margyt().fetch("https://example.invalid/thing.json");
+});
+```
+
+`away` names the work so the diary can say whose it was when it goes wrong.
+`fetch` answers null rather than throwing.

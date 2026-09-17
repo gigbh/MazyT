@@ -41,6 +41,100 @@ public final class Net {
     }
 
     /** The bytes at a url, or null. Never throws, never runs on the main thread. */
+    /** What came back, and whether it was worth coming back at all. */
+    public static final class Answer {
+        public final byte[] body;
+        public final String tag;
+        public final boolean unchanged;
+
+        Answer(byte[] body, String tag, boolean unchanged) {
+            this.body = body;
+            this.tag = tag;
+            this.unchanged = unchanged;
+        }
+    }
+
+    /**
+     * Fetch, saying what was fetched last time.
+     *
+     * A server that keeps an ETag can answer "the same as before" in a few
+     * bytes, and a list of badges asked for every couple of minutes is the
+     * same as before almost every time. Without this the mod would download
+     * the whole list all day to learn nothing.
+     */
+    public static Answer fetch(String url, String tag) {
+        java.net.HttpURLConnection link = null;
+        try {
+            link = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            link.setConnectTimeout(15000);
+            link.setReadTimeout(20000);
+            link.setRequestProperty("User-Agent", "MargyT");
+            if (tag != null && tag.length() > 0) {
+                link.setRequestProperty("If-None-Match", tag);
+            }
+            int code = link.getResponseCode();
+            if (code == 304) return new Answer(null, tag, true);
+            if (code != 200) return null;
+
+            String fresh = link.getHeaderField("ETag");
+            java.io.InputStream in = link.getInputStream();
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[16384];
+            int got;
+            while ((got = in.read(buffer)) > 0) out.write(buffer, 0, got);
+            in.close();
+            return new Answer(out.toByteArray(), fresh, false);
+        } catch (Throwable error) {
+            Diary.note("fetch: " + error);
+            return null;
+        } finally {
+            if (link != null) link.disconnect();
+        }
+    }
+
+    /**
+     * Send some json and read the answer.
+     *
+     * Used for the few things a phone tells the server: which account it is,
+     * and what that account wants shown.
+     */
+    public static String post(String url, String json) {
+        java.net.HttpURLConnection link = null;
+        try {
+            link = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            link.setConnectTimeout(15000);
+            link.setReadTimeout(20000);
+            link.setRequestMethod("POST");
+            link.setDoOutput(true);
+            link.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            link.setRequestProperty("User-Agent", "MargyT");
+
+            byte[] body = json.getBytes("UTF-8");
+            link.setFixedLengthStreamingMode(body.length);
+            java.io.OutputStream out = link.getOutputStream();
+            out.write(body);
+            out.close();
+
+            int code = link.getResponseCode();
+            java.io.InputStream in = code >= 400 ? link.getErrorStream()
+                    : link.getInputStream();
+            if (in == null) return null;
+            java.io.ByteArrayOutputStream read = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            int got;
+            while ((got = in.read(buffer)) > 0) read.write(buffer, 0, got);
+            in.close();
+            String said = new String(read.toByteArray(), "UTF-8");
+            if (code != 200) Diary.note("post " + url + ": " + code + " " + said);
+            return code == 200 ? said : null;
+        } catch (Throwable error) {
+            Diary.note("post: " + error);
+            return null;
+        } finally {
+            if (link != null) link.disconnect();
+        }
+    }
+
     public static byte[] bytes(String url) {
         HttpURLConnection connection = null;
         try {

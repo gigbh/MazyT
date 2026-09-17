@@ -438,6 +438,13 @@ class Build:
         ("google", "Google"),
         ("dotted", "Точечная"),
         ("terminal", "Терминал"),
+        ("yaai", "You are an idiot!"),
+        ("deltamargyt", "Deltamargyt"),
+        ("mteam", "Mteam"),
+        ("deled", "сиводня йа нарисават картино"),
+        ("margytcraft", "MargyTcraft"),
+        ("tigr", "айй тигрр"),
+        ("govno", "че за говно"),
     ]
 
     ICON_PACKAGE = 0x30
@@ -475,9 +482,9 @@ class Build:
                 "final class Shots {\n\n"
                 "    private Shots() {}\n\n"
                 "    static final String DEFAULT = \"%s\";\n\n"
-                "    static final String DEFAULT_PNG = \"%s\";\n\n"
+                "    static final String[] DEFAULT_PNG = %s;\n\n"
                 "    static final String[] KEYS = {\n"
-                % (entry, _thumbnail(os.path.join(self.root, artwork.MASTER_PNG)))
+                % (entry, _chunked(_thumbnail(os.path.join(self.root, artwork.MASTER_PNG))))
             )
             for key, _label, _component, _png in rows:
                 handle.write("        \"%s\",\n" % key)
@@ -487,9 +494,9 @@ class Build:
             handle.write("    };\n\n    static final String[] COMPONENTS = {\n")
             for _key, _label, component, _png in rows:
                 handle.write("        \"%s\",\n" % component)
-            handle.write("    };\n\n    static final String[] PNG = {\n")
+            handle.write("    };\n\n    static final String[][] PNG = {\n")
             for _key, _label, _component, png in rows:
-                handle.write("        \"%s\",\n" % png)
+                handle.write("        %s,\n" % _chunked(png))
             handle.write("    };\n}\n")
         self.detail("%d icons to choose from" % len(rows))
 
@@ -617,6 +624,17 @@ def _tables(keys: List[int], moved: Dict[int, int]) -> str:
             lines.append("        " + ", ".join("0x%08X" % v for v in values[at:at + 6]))
         out.append("    static final int[] %s = {\n%s,\n    };\n" % (name, ",\n".join(lines)))
     return "\n".join(out)
+
+
+def _chunked(encoded: str) -> str:
+    """Base64 as a Java array of pieces.
+
+    A string literal in a class file cannot be longer than 64k of utf-8, and
+    an icon at 192 across can encode to more than that -- which is a build
+    failure rather than anything subtle, and this is the whole of the fix.
+    """
+    pieces = [encoded[at:at + 20000] for at in range(0, len(encoded), 20000)]
+    return "{" + ", ".join('"%s"' % piece for piece in pieces) + "}"
 
 
 def _thumbnail(path: str) -> str:

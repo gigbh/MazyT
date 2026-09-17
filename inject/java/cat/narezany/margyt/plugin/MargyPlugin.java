@@ -33,7 +33,7 @@ public abstract class MargyPlugin {
      * `min_api`, and the loader refuses it rather than calling a hook that no
      * longer means what the plugin thought.
      */
-    public static final int API = 1;
+    public static final int API = 2;
 
     private PluginContext margyt;
 
@@ -93,5 +93,44 @@ public abstract class MargyPlugin {
     }
 
     /** The plugin was switched off, or the app is going down. */
+    // --------------------------------------------- what the app is doing
+
+    /**
+     * A screen came up, by the name of the class that draws it.
+     *
+     * The names are TikTok's own and most of them are renamed every release --
+     * which is why the name is handed over rather than an enum of screens the
+     * mod would have to keep in step. What is stable is the activity itself:
+     * `com.ss.android.ugc.aweme.main.MainActivity` is the feed, the inbox and
+     * the profile, and a fragment inside it is what actually changed.
+     */
+    public void onScreen(Activity activity, String name) {}
+
+    /**
+     * A page of the feed, before anything has drawn it.
+     *
+     * The list is TikTok's own and what is returned is what the app will use:
+     * return it as it came to leave it alone, or a list with things left out.
+     * Returning null is the same as leaving it alone.
+     */
+    public java.util.List onFeed(java.util.List posts) {
+        return posts;
+    }
+
+    /**
+     * A name about to be written somewhere, with the account it belongs to.
+     *
+     * Whatever is returned is what gets drawn. The mod's own badges are added
+     * after this, so a plugin cannot take one away by returning a bare name.
+     */
+    public String onName(String uid, String name) {
+        return name;
+    }
+
+    /** Text on its way into a view. Return it, or something else. */
+    public CharSequence onText(CharSequence text) {
+        return text;
+    }
+
     public void onStop() {}
 }
