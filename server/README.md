@@ -74,10 +74,16 @@ And an icon sent as a document with an account id in the caption is forwarded
 to whoever decides.
 
 Looking an account up by its @name has no API behind it: the profile page is
-fetched and the id taken out of the blob the page carries for its own use. That
-works today and is nobody's promise -- when it stops, the bot says it cannot
-find them rather than inventing an answer. A name that has been looked up is
-kept for a few minutes: an inline search asks again on every key pressed.
+fetched and read out of the blob of json the page carries for its own use --
+the name, the picture, the words under it, how many follow and how much was
+liked, all of it sitting in `webapp.user-detail`. That works today and is
+nobody's promise: when the blob moves, the id is still found by pattern and
+the rest is left out rather than guessed at, and when even that fails the bot
+says it cannot find them. A name that has been looked up is kept for a few
+minutes -- an inline search asks again on every key pressed.
+
+An account asked for by id gets its badges and nothing else: there is no page
+to read without a name.
 
 Every update is handled on its own thread. Reading a profile page takes
 seconds, and doing that in the polling loop meant one inline search held up

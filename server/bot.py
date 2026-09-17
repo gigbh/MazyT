@@ -127,21 +127,55 @@ def by_name(name, patience=20):
     except Exception:
         return None
 
-    found = re.search(r'"user":\{"id":"(\d+)"', page)
-    if not found:
-        found = re.search(r'"id":"(\d{6,24})","shortId"', page)
-    if not found:
-        SEEN[name.lower()] = (time.time(), None)
-        return None
+    who = read_profile(page, name)
+    SEEN[name.lower()] = (time.time(), who)
+    return who
 
-    who = {
+
+def read_profile(page, name):
+    """What the page says about an account.
+
+    The page carries a blob of json for its own use, and everything a
+    profile shows is in it: the name, the picture, the words under it, how
+    many follow and how much was liked. It is read as json while the blob
+    is where it has always been, and by pattern when it is not -- an id
+    alone is worth more than nothing, and guessing the rest is not.
+    """
+    found = re.search(r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"'
+                      r' type="application/json">(.*?)</script>', page, re.S)
+    if found:
+        try:
+            info = (json.loads(found.group(1))["__DEFAULT_SCOPE__"]
+                    ["webapp.user-detail"]["userInfo"])
+            user = info.get("user") or {}
+            counts = info.get("stats") or info.get("statsV2") or {}
+            if user.get("id"):
+                return {
+                    "uid": str(user["id"]),
+                    "username": user.get("uniqueId") or name,
+                    "nickname": user.get("nickname") or "",
+                    "avatar": (user.get("avatarMedium")
+                               or user.get("avatarThumb") or ""),
+                    "about": (user.get("signature") or "").strip(),
+                    "verified": bool(user.get("verified")),
+                    "private": bool(user.get("privateAccount")),
+                    "followers": counts.get("followerCount"),
+                    "likes": counts.get("heartCount") or counts.get("heart"),
+                    "videos": counts.get("videoCount"),
+                }
+        except Exception:
+            pass
+
+    found = (re.search(r'"user":\{"id":"(\d+)"', page)
+             or re.search(r'"id":"(\d{6,24})","shortId"', page))
+    if not found:
+        return None
+    return {
         "uid": found.group(1),
         "username": name,
         "nickname": one(page, r'"nickname":"(.*?)"'),
         "avatar": one(page, r'"avatarMedium":"(.*?)"').replace("\\u002F", "/"),
     }
-    SEEN[name.lower()] = (time.time(), who)
-    return who
 
 
 def one(page, pattern):
@@ -167,15 +201,62 @@ def badge_lines(uid):
     return "\n".join(out)
 
 
+#: as much as a caption will hold
+CAPTION = 1024
+
+#: as much of somebody's own words as is worth repeating
+ROOMY = 300
+
+
+def heap(count):
+    """A number with room to breathe, so it can be read at a glance."""
+    try:
+        return "{:,}".format(int(count)).replace(",", "\u2009")
+    except (TypeError, ValueError):
+        return ""
+
+
 def profile_card(who):
-    lines = []
-    if who.get("nickname"):
-        lines.append("<b>%s</b>" % html.escape(who["nickname"]))
+    named = who.get("nickname") or who.get("username") or ""
+    head = ("<b>%s</b>" % html.escape(named) if named
+            else "<code>%s</code>" % html.escape(who["uid"]))
+    if who.get("verified"):
+        head += " ✔"
+
+    under = []
     if who.get("username"):
-        lines.append("@%s" % html.escape(who["username"]))
-    lines.append("<code>%s</code>" % html.escape(who["uid"]))
-    lines.append("")
-    lines.append(badge_lines(who["uid"]))
+        under.append("@%s" % html.escape(who["username"]))
+    if named:
+        under.append("<code>%s</code>" % html.escape(who["uid"]))
+    if who.get("private"):
+        under.append("закрытый")
+
+    counted = []
+    for number, word in ((who.get("followers"), "подписчиков"),
+                         (who.get("likes"), "лайков"),
+                         (who.get("videos"), "видео")):
+        shown = heap(number)
+        if shown:
+            counted.append("%s %s" % (shown, word))
+
+    about = (who.get("about") or "").strip()
+    if len(about) > ROOMY:
+        about = about[:ROOMY].rstrip() + "…"
+
+    lines = [head]
+    if under:
+        lines.append(" · ".join(under))
+    if counted:
+        lines.append(" · ".join(counted))
+    if about:
+        lines += ["", html.escape(about)]
+    lines += ["", badge_lines(who["uid"])]
+
+    # a caption is refused past its length, and cutting mid-tag would be
+    # refused for worse reasons, so whole lines go instead
+    while len("\n".join(lines)) > CAPTION and len(lines) > 2:
+        lines.pop()
+        lines[-1] = "…"
     return "\n".join(lines)
 
 
@@ -420,6 +501,8 @@ def inline(query):
             title = who.get("nickname") or ("@" + who["username"] if who.get("username")
                                             else who["uid"])
             about = ("%d значк(ов)" % len(worn)) if worn else "значков нет"
+            if who.get("followers") is not None:
+                about = "%s подписчиков · %s" % (heap(who["followers"]), about)
             card = profile_card(who)
             told = known_face(who.get("avatar") or "")
             if told:
