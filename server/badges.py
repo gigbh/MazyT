@@ -35,6 +35,7 @@ import os
 import secrets
 import sqlite3
 import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -97,6 +98,12 @@ def prepare():
             claimed   INTEGER NOT NULL,
             written   INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS face (
+            id   TEXT PRIMARY KEY,
+            url  TEXT NOT NULL,
+            seen INTEGER NOT NULL DEFAULT 0,
+            told TEXT NOT NULL DEFAULT ''
+        );
         CREATE TABLE IF NOT EXISTS visitor (
             ip      TEXT PRIMARY KEY,
             written INTEGER NOT NULL DEFAULT 0
@@ -114,6 +121,11 @@ def prepare():
             added   INTEGER NOT NULL DEFAULT 0
         );
     """)
+    # the name telegram gives a picture came after the table did, and a
+    # server that is already running is not going to grow the column by
+    # being asked for the table again
+    if "told" not in [row[1] for row in db.execute("PRAGMA table_info(face)")]:
+        db.execute("ALTER TABLE face ADD COLUMN told TEXT NOT NULL DEFAULT ''")
     db.commit()
     db.close()
 
@@ -386,12 +398,145 @@ def drop_plugin(which):
 
 # ------------------------------------------------------------- the plumbing
 
+# --------------------------------------------------------------- avatars
+
+#: avatars fetched lately -- mark -> (when, kind, bytes)
+FACES = {}
+FACE_KEEPS = 15 * 60
+
+#: where an avatar may come from, and nowhere else
+FACE_HOSTS = (".tiktokcdn.com", ".tiktokcdn-eu.com", ".tiktokcdn-us.com",
+              ".tiktokcdn-in.com", ".byteimg.com", ".ibyteimg.com")
+
+BROWSER = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+           " (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+
+
+def face_named(url):
+    return hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
+
+
+def face_told(url):
+    """What telegram calls this avatar, if it has been told about it.
+
+    Telegram will not fetch a picture from this server -- it refuses plain
+    http on a bare address, and there is no domain to put a certificate on
+    -- so the bot hands it the bytes once and keeps the name it gets back.
+    That name can be used in an answer for as long as it lasts, with no
+    fetching by anybody.
+    """
+    db = connect()
+    row = db.execute("SELECT told FROM face WHERE id = ?",
+                     (face_named(url),)).fetchone()
+    db.close()
+    return row[0] if row and row[0] else ""
+
+
+def face_tell(url, told):
+    now = int(time.time())
+    db = connect()
+    db.execute("INSERT INTO face (id, url, seen, told) VALUES (?,?,?,?)"
+               " ON CONFLICT(id) DO UPDATE SET seen = excluded.seen,"
+               " told = excluded.told", (face_named(url), url, now, told))
+    db.execute("DELETE FROM face WHERE seen < ?", (now - 7 * 86400,))
+    db.commit()
+    db.close()
+
+
+def face_link(url):
+    """Where somebody else can fetch a tiktok avatar.
+
+    Telegram will not fetch one from tiktok -- the CDN does not serve
+    whoever telegram is -- so it is fetched here and passed on.
+
+    The address is kept here and the link carries only a short name for it.
+    Putting the address in the link does not work for a fetcher that tidies
+    up what it is about to fetch: an address with an escaped address inside
+    it arrives cut at the first question mark.
+
+    Telegram is not the reader of this -- it will not fetch from plain http
+    on a bare address at all, which is what `face_told` is for. This is for
+    anything that will, and for when there is a domain here.
+
+    Only the hosts avatars come from, and only an address that was handed
+    to this service on purpose: there is no way to make it fetch whatever
+    anybody names.
+    """
+    if not (urlparse(url).hostname or "").lower().endswith(FACE_HOSTS):
+        return ""
+    which = face_named(url)
+    now = int(time.time())
+    db = connect()
+    db.execute("INSERT INTO face (id, url, seen) VALUES (?,?,?)"
+               " ON CONFLICT(id) DO UPDATE SET seen = excluded.seen",
+               (which, url, now))
+    db.execute("DELETE FROM face WHERE seen < ?", (now - 7 * 86400,))
+    db.commit()
+    db.close()
+    return "/face/%s.jpg" % which
+
+
+def face(which):
+    now = time.time()
+    for stale in [key for key, (when, _k, _b) in FACES.items()
+                  if now - when > FACE_KEEPS]:
+        FACES.pop(stale, None)
+    kept = FACES.get(which)
+    if kept:
+        return kept[1], kept[2]
+
+    db = connect()
+    row = db.execute("SELECT url FROM face WHERE id = ?", (which,)).fetchone()
+    db.close()
+    if not row:
+        return None, None
+    url = row[0]
+    if not (urlparse(url).hostname or "").lower().endswith(FACE_HOSTS):
+        return None, None
+
+    try:
+        request = urllib.request.Request(url, headers={
+            "User-Agent": BROWSER, "Referer": "https://www.tiktok.com/",
+            "Accept": "image/avif,image/webp,image/*,*/*;q=0.8"})
+        with urllib.request.urlopen(request, timeout=20) as answer:
+            kind = (answer.headers.get("Content-Type") or "").split(";")[0]
+            if not kind.startswith("image/"):
+                return None, None
+            blob = answer.read(4 * 1024 * 1024)
+    except Exception:
+        return None, None
+    if not blob:
+        return None, None
+    FACES[which] = (now, kind, blob)
+    return kind, blob
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "margyt"
     sys_version = ""
 
+    #: a HEAD is answered with the headers and nothing else
+    headless = False
+
     def log_message(self, *args):
         pass   # nginx keeps the log; this would only duplicate it
+
+    def push(self, data):
+        if not self.headless:
+            self.wfile.write(data)
+
+    def do_HEAD(self):
+        """The same answer as a GET, minus the body.
+
+        Telegram asks HEAD before it fetches a picture somebody named, and
+        an unanswered HEAD is a 501 with an html body -- which it reads as
+        the address not being a picture at all, and refuses it.
+        """
+        self.headless = True
+        try:
+            self.do_GET()
+        finally:
+            self.headless = False
 
     def who(self):
         # nginx is in front, so the address that matters is the one it passes
@@ -413,7 +558,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
         self.end_headers()
-        self.wfile.write(data)
+        self.push(data)
 
     # ------------------------------------------------------------- the panel
 
@@ -428,7 +573,7 @@ class Handler(BaseHTTPRequestHandler):
         if cookie is not None:
             self.send_header("Set-Cookie", cookie)
         self.end_headers()
-        self.wfile.write(body)
+        self.push(body)
 
     def go(self, where, cookie=None):
         self.send_response(303)
@@ -647,7 +792,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("ETag", tag)
             self.send_header("Cache-Control", "public, max-age=30")
             self.end_headers()
-            self.wfile.write(data)
+            self.push(data)
             return
 
         if path.startswith("/icon/"):
@@ -661,6 +806,24 @@ class Handler(BaseHTTPRequestHandler):
                 return
             with open(file, "rb") as handle:
                 self.answer(200, None, "image/png", handle.read())
+            return
+
+        if path.startswith("/face/"):
+            which = os.path.basename(path[len("/face/"):])
+            if which.endswith(".jpg"):
+                which = which[:-len(".jpg")]
+            kind, blob = (None, None)
+            if len(which) == 16 and all(c in "0123456789abcdef" for c in which):
+                kind, blob = face(which)
+            if not blob:
+                self.answer(404, {"error": "no such face"})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", str(len(blob)))
+            self.send_header("Cache-Control", "public, max-age=900")
+            self.end_headers()
+            self.push(blob)
             return
 
         if path == "/health":

@@ -35,6 +35,9 @@ import badges as service
 
 TOKEN_FILE = os.path.join(HERE, "bot.txt")
 
+#: where the badge service answers, for the avatar it passes on
+SITE = "http://212.192.210.234"
+
 #: who receives an icon somebody offers
 OWNER = 7826361017
 
@@ -54,20 +57,6 @@ def token():
 def prepare():
     service.prepare()
     db = service.connect()
-    db.executescript("""
-        CREATE TABLE IF NOT EXISTS linked (
-            tg       INTEGER PRIMARY KEY,
-            tg_name  TEXT NOT NULL DEFAULT '',
-            uid      TEXT NOT NULL,
-            username TEXT NOT NULL DEFAULT '',
-            nickname TEXT NOT NULL DEFAULT '',
-            avatar   TEXT NOT NULL DEFAULT '',
-            updated  INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS seen_update (
-            id INTEGER PRIMARY KEY
-        );
-    """)
     db.commit()
     db.close()
 
@@ -82,29 +71,6 @@ def badges_of(uid):
     db.close()
     return [{"id": r[0], "text": r[1] or r[2] or r[0], "shown": bool(r[3])}
             for r in rows]
-
-
-def link(tg, tg_name, uid, who):
-    db = service.connect()
-    db.execute(
-        "INSERT INTO linked (tg, tg_name, uid, username, nickname, avatar, updated)"
-        " VALUES (?,?,?,?,?,?,?) ON CONFLICT(tg) DO UPDATE SET tg_name=excluded.tg_name,"
-        " uid=excluded.uid, username=excluded.username, nickname=excluded.nickname,"
-        " avatar=excluded.avatar, updated=excluded.updated",
-        (tg, tg_name or "", uid, who.get("username", ""), who.get("nickname", ""),
-         who.get("avatar", ""), int(time.time())))
-    db.commit()
-    db.close()
-
-
-def linked_by_tg(tg):
-    db = service.connect()
-    row = db.execute(
-        "SELECT uid, username, nickname, avatar FROM linked WHERE tg = ?",
-        (tg,)).fetchone()
-    db.close()
-    return None if not row else {"uid": row[0], "username": row[1],
-                                 "nickname": row[2], "avatar": row[3]}
 
 
 # ------------------------------------------------------------ looking up
@@ -199,19 +165,6 @@ def badge_lines(uid):
         mark = "" if badge["shown"] else "  (скрыт)"
         out.append("• %s%s" % (badge["text"], mark))
     return "\n".join(out)
-
-
-def fresher(who):
-    """The stored profile, with a new avatar address if one can be had.
-
-    A TikTok avatar address is signed and stops working after a while, so the
-    one saved when somebody linked their account is no use a week later. The
-    name is enough to look the current one up.
-    """
-    if not who.get("username"):
-        return who
-    now = by_name(who["username"])
-    return now or who
 
 
 def profile_card(who):
@@ -348,11 +301,40 @@ def show(chat, who, reply=None):
     say(chat, card, reply)
 
 
+def known_face(url):
+    """A name telegram will accept for this avatar, making one if need be.
+
+    An inline answer can only name a picture, never carry one, and the only
+    addresses telegram will fetch are somebody else's: it refuses this
+    server -- plain http on a bare address, no domain to put a certificate
+    on -- while tiktok refuses telegram. So the avatar is handed over once,
+    as bytes, and the name telegram gives it is kept and reused. The message
+    it was handed in is deleted at once; the name outlives it.
+    """
+    if not url:
+        return ""
+    told = service.face_told(url)
+    if told:
+        return told
+
+    blob = picture(url)
+    if not blob:
+        return ""
+    answer = upload("sendPhoto", "photo", "avatar.jpg", blob,
+                    chat_id=str(OWNER), disable_notification="true")
+    sent = answer.get("result") or {}
+    shots = sent.get("photo") or []
+    if not shots:
+        return ""
+    call("deleteMessage", chat_id=OWNER, message_id=sent["message_id"])
+    told = shots[-1]["file_id"]
+    service.face_tell(url, told)
+    return told
+
+
 HELP = (
     "<b>MargyT</b>\n\n"
     "<b>профиль</b> &lt;ник в тиктоке или айди&gt; — ник, аватарка и значки\n"
-    "<b>профиль</b> — твой, если привязан\n"
-    "<b>я</b> &lt;ник в тиктоке или айди&gt; — привязать свой профиль\n"
     "<b>иконка</b> — пришли картинку документом и свой айди, попадёт владельцу\n\n"
     "В любом чате можно написать <code>@%s ник</code> — покажет то же самое."
 )
@@ -393,26 +375,13 @@ def handle(update):
     # guessing which was meant.
     if low.startswith("профиль") or low.startswith("/profile"):
         which = text.split(maxsplit=1)[1].strip() if len(text.split()) > 1 else ""
-        if which:
-            who = account(which)
-            if not who:
-                return say(chat, "Не нашёл такого в тиктоке.", message["message_id"])
-            return show(chat, who, message["message_id"])
-        mine = linked_by_tg(from_who.get("id"))
-        if not mine:
-            return say(chat, "Чей? Напиши ник в тиктоке: <code>профиль narezany</code>\n"
-                             "Или привяжи свой: <code>я narezany</code>",
-                       message["message_id"])
-        return show(chat, fresher(mine), message["message_id"])
-
-    if low.startswith("я ") or low.startswith("/link"):
-        which = text.split(maxsplit=1)[1].strip() if len(text.split()) > 1 else ""
-        who = account(which) if which else None
+        if not which:
+            return say(chat, "Чей? Напиши ник в тиктоке: "
+                             "<code>профиль narezany</code>", message["message_id"])
+        who = account(which)
         if not who:
-            return say(chat, "Напиши так: <code>я 7551880794956989495</code> "
-                             "или <code>я @narezany</code>")
-        link(from_who.get("id"), from_who.get("username", ""), who["uid"], who)
-        return show(chat, who)
+            return say(chat, "Не нашёл такого в тиктоке.", message["message_id"])
+        return show(chat, who, message["message_id"])
 
     if low.startswith("иконка"):
         return say(chat, "Пришли картинку <b>документом</b>, а в подписи — "
@@ -450,18 +419,31 @@ def inline(query):
             worn = badges_of(who["uid"])
             title = who.get("nickname") or ("@" + who["username"] if who.get("username")
                                             else who["uid"])
-            results.append({
-                "type": "article",
-                "id": who["uid"][:60],
-                "title": title,
-                "description": ("%d значк(ов)" % len(worn)) if worn else "значков нет",
-                "thumb_url": who.get("avatar") or "",
-                "input_message_content": {
-                    "message_text": profile_card(who),
+            about = ("%d значк(ов)" % len(worn)) if worn else "значков нет"
+            card = profile_card(who)
+            told = known_face(who.get("avatar") or "")
+            if told:
+                results.append({
+                    "type": "photo",
+                    "id": who["uid"][:60],
+                    "photo_file_id": told,
+                    "title": title,
+                    "description": about,
+                    "caption": card,
                     "parse_mode": "HTML",
-                    "disable_web_page_preview": True,
-                },
-            })
+                })
+            else:
+                results.append({
+                    "type": "article",
+                    "id": who["uid"][:60],
+                    "title": title,
+                    "description": about,
+                    "input_message_content": {
+                        "message_text": card,
+                        "parse_mode": "HTML",
+                        "disable_web_page_preview": True,
+                    },
+                })
     call("answerInlineQuery", inline_query_id=query["id"], results=results,
          cache_time=30, is_personal=False)
 

@@ -66,11 +66,9 @@ about a plugin is what the phone will load.
 ## The bot
 
 `@margy_robot`, by long polling: no certificate, no port, nothing to expose. It
-does three things.
+does two things.
 
-    бейджи <айди или @имя>     whose badges are these
-    я <айди или @имя>          link your own TikTok account
-    что за профиль             as a reply, or with somebody's @name in Telegram
+    профиль <ник в тиктоке или айди>    the name, the picture and the badges
 
 And an icon sent as a document with an account id in the caption is forwarded
 to whoever decides.
@@ -78,7 +76,27 @@ to whoever decides.
 Looking an account up by its @name has no API behind it: the profile page is
 fetched and the id taken out of the blob the page carries for its own use. That
 works today and is nobody's promise -- when it stops, the bot says it cannot
-find them rather than inventing an answer.
+find them rather than inventing an answer. A name that has been looked up is
+kept for a few minutes: an inline search asks again on every key pressed.
+
+Every update is handled on its own thread. Reading a profile page takes
+seconds, and doing that in the polling loop meant one inline search held up
+every message behind it.
+
+The avatar is a game of two refusals. Telegram will not fetch a picture from
+tiktok -- the CDN does not serve whoever Telegram is -- and it will not fetch
+one from this server either, because plain http on a bare address is not
+something it will touch and there is no domain here to put a certificate on.
+So the bytes are read here and handed over: uploaded with the message in a
+chat, and for an inline answer -- which can only name a picture, never carry
+one -- uploaded once to a message that is deleted immediately, keeping the
+name Telegram gave it. Those names are kept in `face`. `/face/<id>.jpg` serves
+avatars to anything that will fetch them, and is what the bot can use the day
+there is a domain.
+
+An answer carries the topic of the question it answers. In a group that keeps
+topics, an answer without one goes to General -- and a closed General means
+every answer is refused outright.
 
 Inline mode has to be turned on in BotFather (`/setinline`) before the bot can
 answer in other chats; nothing here can do that.
