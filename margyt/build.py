@@ -24,6 +24,7 @@ from .toolchain import Toolchain
 
 PACKAGE = "cat.narezany.margyt"
 SETTINGS_ACTIVITY = PACKAGE + ".SettingsActivity"
+STORE_ACTIVITY = PACKAGE + ".StoreActivity"
 STARTUP_PROVIDER = PACKAGE + ".MargyProvider"
 
 # The screen the MargyT row is put at the top of. The row itself is added to
@@ -147,6 +148,8 @@ class Build:
         self.tools.check_attribute_ids(axml_module.ATTR_IDS)
         manifest_module.add_activity(manifest, SETTINGS_ACTIVITY, SETTINGS_LABEL, theme)
         self.detail("%s declared, reached from TikTok's own settings" % SETTINGS_ACTIVITY)
+        manifest_module.add_activity(manifest, STORE_ACTIVITY, SETTINGS_LABEL, theme)
+        self.detail("%s declared, the plugin store" % STORE_ACTIVITY)
 
         if not manifest_module.has_activity(manifest, TIKTOK_SETTINGS):
             raise RuntimeError(

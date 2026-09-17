@@ -49,6 +49,22 @@ public final class Mine {
     private static volatile List<Held> held = new ArrayList<Held>();
     private static volatile boolean asked;
 
+    /**
+     * Set when the server has just answered, and cleared by whoever reads it.
+     *
+     * The settings screen keeps its own copy of the order while it is being
+     * rearranged, and that copy must be thrown away when the server says
+     * something new -- otherwise the first, empty answer is what stays on
+     * screen even after the real one arrives.
+     */
+    private static volatile boolean fresh;
+
+    public static boolean tookFresh() {
+        boolean was = fresh;
+        fresh = false;
+        return was;
+    }
+
     public static List<Held> held() {
         return new ArrayList<Held>(held);
     }
@@ -96,6 +112,7 @@ public final class Mine {
                     keep(uid, answer.optString("token", ""));
                     read(answer);
                     asked = true;
+                    fresh = true;
                     if (then != null) {
                         new android.os.Handler(android.os.Looper.getMainLooper())
                                 .post(then);

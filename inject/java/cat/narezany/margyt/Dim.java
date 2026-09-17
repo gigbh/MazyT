@@ -112,88 +112,144 @@ public final class Dim {
      */
     private static final long QUIET = 120;
 
-    /** The video, which is the one thing here the framework still names. */
-    private static View surface(View view, int depth) {
-        if (view == null || depth > 40) return null;
-        if (view instanceof SurfaceView || view instanceof TextureView) return view;
-        if (!(view instanceof ViewGroup)) return null;
+    /**
+     * The video that is actually being watched.
+     *
+     * Not the first one in the tree, which is what this used to take: a feed
+     * keeps the cells on either side of the one you are looking at, so the
+     * first surface it found was as often the video above as the one on
+     * screen -- and the cell it dimmed was that one. The one being watched is
+     * the one covering the middle of the screen.
+     */
+    private static View surface(View root, int unused) {
+        java.util.List<View> all = new java.util.ArrayList<View>();
+        gather(root, all, 0);
+        if (all.isEmpty()) return null;
+
+        int middleX = root.getWidth() / 2;
+        int middleY = root.getHeight() / 2;
+        android.graphics.Rect where = new android.graphics.Rect();
+        View biggest = null;
+        long widest = 0;
+        for (View one : all) {
+            if (!one.getGlobalVisibleRect(where)) continue;
+            if (where.contains(middleX, middleY)) return one;
+            long area = (long) where.width() * where.height();
+            if (area > widest) {
+                widest = area;
+                biggest = one;
+            }
+        }
+        return biggest;
+    }
+
+    private static void gather(View view, java.util.List<View> out, int depth) {
+        if (view == null || depth > 40 || out.size() > 8) return;
+        if (view instanceof SurfaceView || view instanceof TextureView) {
+            out.add(view);
+            return;
+        }
+        if (!(view instanceof ViewGroup)) return;
         ViewGroup group = (ViewGroup) view;
         for (int i = 0; i < group.getChildCount(); i++) {
-            View found = surface(group.getChildAt(i), depth + 1);
-            if (found != null) return found;
+            gather(group.getChildAt(i), out, depth + 1);
         }
-        return null;
     }
 
     /**
-     * Everything on the screen except the video and what holds it.
+     * Everything in this video's own cell except the video.
      *
-     * The first version faded the video's later siblings, three levels up.
-     * That reached the buttons down the right and missed the row of tabs along
-     * the top, which is not a sibling of the video at all -- it is in another
-     * branch entirely, above the pager the videos live in.
+     * The cell is found by walking up from the video until the list the videos
+     * are in -- that list is the edge, and above it are the other videos and
+     * the screen itself, which are not ours. Inside the cell, anything that is
+     * not the video and does not contain it is over the video by definition:
+     * the buttons, the caption, the record, the scrubbing bar.
      *
-     * So the rule is the other way round now: walk from the top of the screen,
-     * and fade every branch that does not contain the video. What holds the
-     * video keeps its own brightness, because fading a parent fades everything
-     * inside it, the video included.
+     * This replaced "the siblings drawn after the video", which reached
+     * whatever happened to be listed after it and missed whatever was not.
      */
     private static void over(View video, View root, float alpha) {
-        // Back to what this was to begin with: what is drawn after the video,
-        // a few levels up, and nothing else. Walking the whole window and
-        // fading every branch without the video in it meant half of TikTok --
-        // the comments, a profile, every panel that opens over the feed --
-        // none of which sits still long enough to wear a screen, and all of
-        // which somebody is trying to read.
-        View keep = video;
-        ViewGroup parent = (ViewGroup) video.getParent();
-        int up = 0;
-        while (parent != null && up < 3) {
-            int at = parent.indexOfChild(keep);
-            for (int i = at + 1; i < parent.getChildCount(); i++) {
-                fade(parent.getChildAt(i), alpha);
-            }
-            keep = parent;
-            Object above = parent.getParent();
-            parent = above instanceof ViewGroup ? (ViewGroup) above : null;
-            up++;
+        View cell = video;
+        java.util.List<View> spine = new java.util.ArrayList<View>();
+        spine.add(cell);
+        while (true) {
+            Object parent = cell.getParent();
+            if (!(parent instanceof ViewGroup)) break;
+            ViewGroup group = (ViewGroup) parent;
+            if (scrolls(group)) break;
+            cell = group;
+            spine.add(cell);
         }
+        if (cell == video) return;
 
+        inside(cell, spine, alpha, 0);
         topBar(root, alpha);
+    }
+
+    private static void inside(View view, java.util.List<View> spine,
+                               float alpha, int depth) {
+        if (view == null || depth > 12) return;
+        if (!spine.contains(view)) {
+            fade(view, alpha);
+            return;          // its children go with it
+        }
+        if (!(view instanceof ViewGroup)) return;
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            inside(group.getChildAt(i), spine, alpha, depth + 1);
+        }
+    }
+
+    /** Whether this is the thing the videos are listed in. */
+    private static boolean scrolls(View view) {
+        String name = view.getClass().getName();
+        return name.contains("RecyclerView") || name.contains("ViewPager")
+                || name.contains("ListView");
     }
 
     /**
      * The row along the top: Подписки, Магазин, Рекомендации, the search.
      *
-     * It is not a sibling of the video -- it lives above the pager the videos
-     * are in -- so the walk never reaches it. TikTok builds it in a class
-     * called `HomepageToolBar`, which is a real name and a dead end: it is not
-     * a view, it is a factory, and the view it fills is an ordinary
-     * FrameLayout handed to it. There is nothing in the tree with a name worth
-     * matching.
-     *
-     * What the row does have is a shape nothing else on the screen has: the
-     * full width, pinned to the very top, a tenth of the height at most, and
-     * several pieces of text inside it. A panel somebody opened is never that
-     * short, and the video is never that high.
+     * Looked for once and then remembered. TikTok builds it in a class called
+     * `HomepageToolBar`, which is a real name and a dead end -- it is not a
+     * view, it is a factory, and what it fills is an ordinary FrameLayout. So
+     * it is found by its shape instead, and searching a whole screen for that
+     * shape on every layout is what was making the app slow to start.
      */
     private static void topBar(View root, float alpha) {
+        View known = bar == null ? null : bar.get();
+        if (known != null && known.isAttachedToWindow()) {
+            fade(known, alpha);
+            return;
+        }
+        if (searched) return;
+        searched = true;
         try {
             View content = root.findViewById(android.R.id.content);
             if (!(content instanceof ViewGroup)) return;
             int tall = root.getHeight();
             int wide = root.getWidth();
-            if (tall <= 0 || wide <= 0) return;
-            look((ViewGroup) content, alpha, tall, wide, 0);
+            if (tall <= 0 || wide <= 0) {
+                searched = false;   // the screen has no size yet; try again later
+                return;
+            }
+            View found = look((ViewGroup) content, tall, wide, 0);
+            if (found != null) {
+                bar = new java.lang.ref.WeakReference<View>(found);
+                fade(found, alpha);
+            }
         } catch (Throwable ignored) {
         }
     }
 
-    /** An eighth of the screen: taller than that and it is not the row. */
+    private static volatile java.lang.ref.WeakReference<View> bar;
+    private static volatile boolean searched;
+
+    /** A tenth of the screen: taller than that and it is not the row. */
     private static final float THIN = 0.14f;
 
-    private static void look(ViewGroup group, float alpha, int tall, int wide, int depth) {
-        if (depth > 4) return;
+    private static View look(ViewGroup group, int tall, int wide, int depth) {
+        if (depth > 4) return null;
         int[] where = new int[2];
         for (int i = 0; i < group.getChildCount(); i++) {
             View child = group.getChildAt(i);
@@ -205,14 +261,13 @@ public final class Dim {
             boolean full = child.getWidth() > wide * 0.85f;
             boolean atTop = where[1] < tall * 0.2f;
 
-            if (thin && full && atTop && words(child, 0) >= 2) {
-                fade(child, alpha);
-                return;
-            }
+            if (thin && full && atTop && words(child, 0) >= 2) return child;
             if (child instanceof ViewGroup) {
-                look((ViewGroup) child, alpha, tall, wide, depth + 1);
+                View found = look((ViewGroup) child, tall, wide, depth + 1);
+                if (found != null) return found;
             }
         }
+        return null;
     }
 
     /** How many pieces of text are inside, which is what makes it a row of tabs. */

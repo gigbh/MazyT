@@ -329,6 +329,26 @@ MODEL_STATICS: List[Tuple[str, str, str, str, str]] = [
     for name, args, kind in AB_READERS
 ]
 
+# The date beside an author's name, which TikTok draws only when the video was
+# opened from a profile. Five questions decide it -- each "is this where it was
+# opened from one of the profile ones" -- and the mod answers them.
+#
+# The class is this release's and nothing else in the apk names it, so it is
+# written here rather than found: the counters say at once if a release renames
+# it. `Dates.java` carries the same name for handing the call back.
+DATE_GATES = "LX/0QeW;"
+DATES = "Lcat/narezany/margyt/Dates;"
+
+MODEL_STATICS += [
+    (DATE_GATES, ("LIZ", "fromProfile"), "(%s)Z" % STRING, "(%s)Z" % STRING, DATES),
+    (DATE_GATES, ("LIZIZ", "fromProfileToo"), "(%s)Z" % STRING, "(%s)Z" % STRING, DATES),
+    (DATE_GATES, ("LIZJ", "fromProfileAlso"), "(%s)Z" % STRING, "(%s)Z" % STRING, DATES),
+    (DATE_GATES, ("LIZLLL", "fromProfileAsWell"), "(%s)Z" % STRING,
+     "(%s)Z" % STRING, DATES),
+    (DATE_GATES, ("LJFF", "fromProfileOrOther"), "(%s)Z" % STRING,
+     "(%s)Z" % STRING, DATES),
+]
+
 # and which subscription the system calls the default, which is -1 when there
 # is no card at all -- code that asks usually gives up on the spot
 MODEL_STATICS += [

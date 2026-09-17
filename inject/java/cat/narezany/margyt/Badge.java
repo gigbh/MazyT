@@ -377,7 +377,15 @@ public final class Badge {
 
         int size = Math.round(view.getTextSize());
         if (size <= 0) size = Math.round(14 * view.getResources().getDisplayMetrics().density);
-        drawable.setBounds(0, 0, size, size);
+
+        // as wide as it is tall only if the drawing is. Trimming a badge to
+        // its content leaves a picture of whatever shape that content is --
+        // the crown makes the owner's taller than it is wide -- and forcing
+        // that into a square stretches it.
+        int wide = drawable.getIntrinsicWidth();
+        int tall = drawable.getIntrinsicHeight();
+        int across = wide > 0 && tall > 0 ? Math.round(size * (float) wide / tall) : size;
+        drawable.setBounds(0, 0, Math.max(1, across), size);
         return drawable;
     }
 
@@ -500,7 +508,7 @@ public final class Badge {
      * because the launcher masks and moves it. Beside a name none of that
      * applies and the empty margin is just a smaller emblem.
      */
-    private static Bitmap crop(Bitmap bitmap) {
+    static Bitmap crop(Bitmap bitmap) {
         int width = bitmap.getWidth(), height = bitmap.getHeight();
         int[] pixels = new int[width * height];
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height);

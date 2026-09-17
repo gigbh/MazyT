@@ -27,23 +27,33 @@ edited out: which badges a claim may grant, how often anything may be written,
 and when the free badge stops being free.
 """
 
+import cgi
 import hashlib
+import io
 import json
 import os
 import secrets
 import sqlite3
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+import panel
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(HERE, "badges.db")
 ICONS = os.path.join(HERE, "icons")
+PLUGINS = os.path.join(HERE, "plugins")
+
+#: who may use the panel. Read from a file so it is not in the source, and
+#: written by hand on the server rather than by anything here.
+WHO = os.path.join(HERE, "admin.txt")
 
 #: the free badge, and the moment it stops being given out. After this the
 #: badge stays on everyone who took it and is offered to nobody -- which is
 #: what makes it worth having and what makes its wording true.
 FREE = "old"
-FREE_UNTIL = 1758661200          # 2025-09-24 00:00 UTC+3
+FREE_UNTIL = 1758315600          # 2025-09-20 00:00 UTC+3
 
 #: how often one account, or one address, may change anything
 EVERY = 60
@@ -91,6 +101,18 @@ def prepare():
             ip      TEXT PRIMARY KEY,
             written INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS plugin (
+            id      TEXT PRIMARY KEY,
+            name    TEXT NOT NULL DEFAULT '',
+            version TEXT NOT NULL DEFAULT '',
+            author  TEXT NOT NULL DEFAULT '',
+            about   TEXT NOT NULL DEFAULT '',
+            tiktok  TEXT NOT NULL DEFAULT '',
+            file    TEXT NOT NULL DEFAULT '',
+            icon    TEXT NOT NULL DEFAULT '',
+            size    INTEGER NOT NULL DEFAULT 0,
+            added   INTEGER NOT NULL DEFAULT 0
+        );
     """)
     db.commit()
     db.close()
@@ -98,13 +120,36 @@ def prepare():
 
 # ------------------------------------------------------------ what is served
 
+#: what a badge is drawn with when it says nothing: the mod's own note
+PLAIN = "note.png"
+
+
+def stamped(name):
+    """A picture's name with a mark of what is in it.
+
+    Phones keep a picture by the name it came under, and these names do not
+    change when the drawing does -- so a new crown would never reach anybody
+    who already had the old one. The mark makes a redrawn picture a different
+    picture as far as any cache is concerned.
+    """
+    if not name:
+        name = PLAIN
+    path = os.path.join(ICONS, os.path.basename(name.split("?")[0]))
+    try:
+        with open(path, "rb") as handle:
+            mark = hashlib.sha256(handle.read()).hexdigest()[:8]
+        return "%s?v=%s" % (os.path.basename(path), mark)
+    except OSError:
+        return name
+
+
 def public():
     """Every badge and who wears it, in the shape the mod already reads."""
     db = connect()
     badges = {}
     for row in db.execute("SELECT * FROM badge"):
         badges[row[0]] = {
-            "id": row[0], "colour": row[1], "image": row[2], "title": row[3],
+            "id": row[0], "colour": row[1], "image": stamped(row[2]), "title": row[3],
             "text": row[4], "text_ru": row[5], "text_uk": row[6], "button": row[7],
             "users": [],
         }
@@ -254,6 +299,91 @@ def sane(uid):
     return isinstance(uid, str) and uid.isdigit() and 6 <= len(uid) <= 24
 
 
+# --------------------------------------------------------------- the plugins
+
+def plugins():
+    """Everything the store offers, newest first."""
+    db = connect()
+    rows = db.execute(
+        "SELECT id, name, version, author, about, tiktok, file, icon, size"
+        " FROM plugin ORDER BY added DESC").fetchall()
+    db.close()
+    return {"plugins": [
+        {"id": r[0], "name": r[1], "version": r[2], "author": r[3], "about": r[4],
+         "tiktok": r[5], "url": "/plugin/" + r[6], "icon": ("/picture/" + r[7])
+         if r[7] else "", "size": r[8]}
+        for r in rows]}
+
+
+def take_plugin(raw, name):
+    """Read a packed plugin, keep it, and remember what its manifest says.
+
+    The store shows what the plugin says about itself, so the manifest is read
+    here rather than typed into a form: a name and an author that disagree with
+    what the phone will load are worse than none.
+    """
+    import io
+    import zipfile
+
+    with zipfile.ZipFile(io.BytesIO(raw)) as pack:
+        try:
+            said = json.loads(pack.read("manifest.json").decode("utf-8"))
+        except KeyError:
+            raise ValueError("no manifest.json in that file")
+        icon = b""
+        for at in ("icon.png", "icon.webp", "icon.jpg"):
+            try:
+                icon = pack.read(at)
+                break
+            except KeyError:
+                continue
+
+    which = str(said.get("id") or "").strip()
+    if not which or "/" in which or len(which) > 64:
+        raise ValueError("the manifest has no usable id")
+
+    os.makedirs(PLUGINS, exist_ok=True)
+    file = which + ".mtp"
+    with open(os.path.join(PLUGINS, file), "wb") as handle:
+        handle.write(raw)
+
+    picture = ""
+    if icon:
+        picture = which + ".png"
+        with open(os.path.join(ICONS, picture), "wb") as handle:
+            handle.write(icon)
+
+    db = connect()
+    db.execute(
+        "INSERT INTO plugin (id, name, version, author, about, tiktok, file, icon,"
+        " size, added) VALUES (?,?,?,?,?,?,?,?,?,?)"
+        " ON CONFLICT(id) DO UPDATE SET name=excluded.name, version=excluded.version,"
+        " author=excluded.author, about=excluded.about, tiktok=excluded.tiktok,"
+        " file=excluded.file, icon=excluded.icon, size=excluded.size,"
+        " added=excluded.added",
+        (which, str(said.get("name") or which), str(said.get("version") or "?"),
+         str(said.get("author") or "?"), str(said.get("description") or ""),
+         str(said.get("tiktok") or ""), file, picture, len(raw), int(time.time())))
+    db.commit()
+    db.close()
+    return which
+
+
+def drop_plugin(which):
+    db = connect()
+    row = db.execute("SELECT file, icon FROM plugin WHERE id = ?", (which,)).fetchone()
+    if row:
+        for folder, name in ((PLUGINS, row[0]), (ICONS, row[1])):
+            if name:
+                try:
+                    os.remove(os.path.join(folder, name))
+                except OSError:
+                    pass
+    db.execute("DELETE FROM plugin WHERE id = ?", (which,))
+    db.commit()
+    db.close()
+
+
 # ------------------------------------------------------------- the plumbing
 
 class Handler(BaseHTTPRequestHandler):
@@ -285,8 +415,224 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    # ------------------------------------------------------------- the panel
+
+    def signed_in(self):
+        return panel.allowed(self.headers.get("Cookie", ""))
+
+    def html(self, body, code=200, cookie=None):
+        self.send_response(code)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        if cookie is not None:
+            self.send_header("Set-Cookie", cookie)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def go(self, where, cookie=None):
+        self.send_response(303)
+        self.send_header("Location", where)
+        if cookie is not None:
+            self.send_header("Set-Cookie", cookie)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def form(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > 32 * 1024 * 1024:
+            return {}
+        raw = self.rfile.read(length)
+        return {k: v[0] for k, v in parse_qs(raw.decode("utf-8", "replace")).items()}
+
+    def panel_get(self, path, query):
+        if not self.signed_in():
+            self.html(panel.sign_in_page())
+            return
+
+        if path == "/admin":
+            db = connect()
+            badges = [
+                {"id": r[0], "colour": r[1], "image": r[2].split("?")[0],
+                 "text": r[4] or r[3], "worn": r[5]}
+                for r in db.execute(
+                    "SELECT b.id, b.colour, b.image, b.title, b.text, COUNT(h.uid)"
+                    " FROM badge b LEFT JOIN held h ON h.badge = b.id"
+                    " GROUP BY b.id ORDER BY b.id")]
+            db.close()
+            self.html(panel.main_page(badges, plugins()["plugins"],
+                                      query.get("said", [""])[0]))
+            return
+
+        if path == "/admin/badge":
+            which = query.get("id", [""])[0]
+            db = connect()
+            row = db.execute(
+                "SELECT id, colour, image, text FROM badge WHERE id = ?",
+                (which,)).fetchone()
+            if not row:
+                db.close()
+                self.go("/admin?said=нет такого значка")
+                return
+            wearers = db.execute(
+                "SELECT uid, shown FROM held WHERE badge = ? ORDER BY given_at DESC",
+                (which,)).fetchall()
+            db.close()
+            self.html(panel.badge_page(
+                {"id": row[0], "colour": row[1], "image": row[2].split("?")[0],
+                 "text": row[3]}, wearers))
+            return
+
+        if path == "/admin/out":
+            self.go("/admin", "margyt=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
+            return
+
+        self.answer(404, {"error": "no such page"})
+
+    def panel_post(self, path):
+        if path == "/admin/in":
+            said = self.form()
+            user, password, _secret = panel.who()
+            if (user and said.get("user") == user
+                    and secrets.compare_digest(said.get("password", ""), password)):
+                self.go("/admin", "margyt=%s; Path=/; Max-Age=43200; HttpOnly;"
+                                  " SameSite=Lax" % panel.ticket())
+            else:
+                self.html(panel.sign_in_page("не подошло"))
+            return
+
+        if not self.signed_in():
+            self.html(panel.sign_in_page())
+            return
+
+        if path == "/admin/badge/new":
+            # a form with a file in it is read whole rather than as a query
+            # string, so the picture arrives the same way a plugin does
+            try:
+                form = cgi.FieldStorage(
+                    fp=self.rfile, headers=self.headers,
+                    environ={"REQUEST_METHOD": "POST",
+                             "CONTENT_TYPE": self.headers.get("Content-Type", "")})
+            except Exception as trouble:
+                self.go("/admin?said=не вышло: %s" % trouble)
+                return
+
+            def field(name):
+                try:
+                    return (form.getfirst(name) or "").strip()
+                except Exception:
+                    return ""
+
+            which = field("id")
+            if not which or "/" in which or len(which) > 64:
+                self.go("/admin?said=нужен id")
+                return
+
+            picture = ""
+            try:
+                item = form["picture"]
+                raw = item.file.read() if item.filename else b""
+            except Exception:
+                raw = b""
+            if raw:
+                picture = which + ".png"
+                with open(os.path.join(ICONS, picture), "wb") as handle:
+                    handle.write(raw)
+
+            said = {"id": which, "colour": field("colour"), "image": picture,
+                    "text": field("text"), "text_ru": field("text_ru"),
+                    "text_uk": field("text_uk")}
+            db = connect()
+            db.execute(
+                "INSERT INTO badge (id, colour, image, title, text, text_ru, text_uk,"
+                " button) VALUES (?,?,?,?,?,?,?,?)"
+                " ON CONFLICT(id) DO UPDATE SET colour=excluded.colour,"
+                " image=excluded.image, text=excluded.text, text_ru=excluded.text_ru,"
+                " text_uk=excluded.text_uk",
+                (which, (said.get("colour") or "").strip().lstrip("#"),
+                 (said.get("image") or "").strip(), "MargyT",
+                 said.get("text", ""), said.get("text_ru", ""),
+                 said.get("text_uk", ""), "Got it"))
+            db.commit()
+            db.close()
+            self.go("/admin?said=значок %s готов" % which)
+            return
+
+        if path == "/admin/badge/give":
+            said = self.form()
+            which = said.get("id", "")
+            given = 0
+            db = connect()
+            if db.execute("SELECT 1 FROM badge WHERE id = ?", (which,)).fetchone():
+                now = int(time.time())
+                for uid in (said.get("uids") or "").replace(",", " ").split():
+                    if sane(uid):
+                        db.execute("INSERT OR IGNORE INTO held (uid, badge, given_at)"
+                                   " VALUES (?, ?, ?)", (uid, which, now))
+                        given += 1
+                db.commit()
+            db.close()
+            self.go("/admin/badge?id=%s" % which)
+            return
+
+        if path == "/admin/badge/take":
+            said = self.form()
+            db = connect()
+            db.execute("DELETE FROM held WHERE uid = ? AND badge = ?",
+                       (said.get("uid", ""), said.get("id", "")))
+            db.commit()
+            db.close()
+            self.go("/admin/badge?id=%s" % said.get("id", ""))
+            return
+
+        if path == "/admin/plugin/drop":
+            said = self.form()
+            drop_plugin(said.get("id", ""))
+            self.go("/admin?said=плагин убран")
+            return
+
+        if path == "/admin/plugin/add":
+            try:
+                form = cgi.FieldStorage(
+                    fp=self.rfile, headers=self.headers,
+                    environ={"REQUEST_METHOD": "POST",
+                             "CONTENT_TYPE": self.headers.get("Content-Type", "")})
+                item = form["file"]
+                which = take_plugin(item.file.read(), item.filename or "plugin.mtp")
+                self.go("/admin?said=плагин %s в магазине" % which)
+            except Exception as trouble:
+                self.go("/admin?said=не вышло: %s" % trouble)
+            return
+
+        self.answer(404, {"error": "no such page"})
+
     def do_GET(self):
-        path = self.path.split("?")[0]
+        parts = urlparse(self.path)
+        path = parts.path
+        if path.startswith("/admin"):
+            self.panel_get(path, parse_qs(parts.query))
+            return
+        if path.startswith("/plugin/"):
+            name = os.path.basename(path[len("/plugin/"):])
+            file = os.path.join(PLUGINS, name)
+            if not name.endswith(".mtp") or not os.path.isfile(file):
+                self.answer(404, {"error": "no such plugin"})
+                return
+            with open(file, "rb") as handle:
+                self.answer(200, None, "application/octet-stream", handle.read())
+            return
+        if path == "/plugins":
+            self.answer(200, plugins())
+            return
+        if path.startswith("/picture/"):
+            name = os.path.basename(path[len("/picture/"):])
+            file = os.path.join(ICONS, name)
+            if not os.path.isfile(file):
+                self.answer(404, {"error": "no such picture"})
+                return
+            with open(file, "rb") as handle:
+                self.answer(200, None, "image/png", handle.read())
+            return
         if path == "/badges":
             data = json.dumps(public(), ensure_ascii=False).encode("utf-8")
             tag = '"%s"' % hashlib.sha256(data).hexdigest()[:32]
@@ -324,7 +670,10 @@ class Handler(BaseHTTPRequestHandler):
         self.answer(404, {"error": "no such thing"})
 
     def do_POST(self):
-        path = self.path.split("?")[0]
+        path = urlparse(self.path).path
+        if path.startswith("/admin"):
+            self.panel_post(path)
+            return
         try:
             length = int(self.headers.get("Content-Length") or 0)
             if length > 8192:

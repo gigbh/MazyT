@@ -370,6 +370,9 @@ final class Text {
     static final String MINE_WAIT = pick("Спрашиваю сервер…", "Питаю сервер…",
             "Asking the server...");
 
+    static final String MINE_SAVE = pick(
+            "Сохранить значки", "Зберегти значки", "Save my badges");
+
     static final String MINE_SAVED = pick("Сохранено", "Збережено", "Saved");
 
     static final String MINE_TOO_OFTEN = pick(
@@ -381,17 +384,60 @@ final class Text {
             "A free badge for the old lot");
 
     static final String FREE_BADGE_TEXT = pick(
-            "Бирюзовый значок «Использовал MargyT до 24-го сентября». "
-                    + "После 24-го его больше не выдадут — ни за что.",
-            "Бірюзовий значок «Користувався MargyT до 24-го вересня». "
-                    + "Після 24-го його більше не видадуть — ні за що.",
-            "A turquoise badge that says you were here before the 24th of "
+            "Бирюзовый значок «Использовал MargyT до 20-го сентября». "
+                    + "После 20-го его больше не выдадут — ни за что.",
+            "Бірюзовий значок «Користувався MargyT до 20-го вересня». "
+                    + "Після 20-го його більше не видадуть — ні за що.",
+            "A turquoise badge that says you were here before the 20th of "
                     + "September. After that nobody gets one, at any price.");
 
     static final String FREE_BADGE_TAKE = pick("Забрать", "Забрати", "Take it");
 
     static final String FREE_BADGE_GOT = pick(
             "Значок твой", "Значок твій", "It is yours");
+
+    static final String ALWAYS_DATE = pick(
+            "Дата под каждым видео", "Дата під кожним відео",
+            "The date on every video");
+
+    static final String ALWAYS_DATE_NOTE = pick(
+            "Тикток показывает её только если открыть видео с профиля автора.",
+            "Тікток показує її лише якщо відкрити відео з профілю автора.",
+            "TikTok shows it only when the video was opened from a profile.");
+
+    // ------------------------------------------------------ the plugin store
+
+    static final String STORE = pick("Магазин плагинов", "Магазин плагінів",
+            "The plugin store");
+
+    static final String STORE_OPEN = pick("Открыть магазин", "Відкрити магазин",
+            "Open the store");
+
+    static final String STORE_WAIT = pick("Смотрю, что есть…", "Дивлюсь, що є…",
+            "Looking...");
+
+    static final String STORE_OFFLINE = pick(
+            "Магазин не отвечает", "Магазин не відповідає", "The store is not answering");
+
+    static final String STORE_GET = pick("Поставить", "Поставити", "Get it");
+    static final String STORE_ANYWAY = pick("Всё равно", "Все одно", "Anyway");
+    static final String STORE_GETTING = pick("Качаю плагин", "Завантажую плагін",
+            "Fetching the plugin");
+    static final String STORE_GOT = pick("Готово, перезапусти приложение",
+            "Готово, перезапусти застосунок", "Done -- restart the app");
+    static final String STORE_FAILED = pick("Не вышло", "Не вийшло", "That did not work");
+
+    static final String STORE_WRONG_VERSION = pick(
+            "Для другой версии TikTok", "Для іншої версії TikTok",
+            "For a different TikTok");
+
+    static final String STORE_NOTE = pick(
+            "Плагины загружает владелец мода. Ставь только то, чему доверяешь: "
+                    + "плагин работает внутри тиктока с твоим аккаунтом.",
+            "Плагіни завантажує власник мода. Став лише те, чому довіряєш: "
+                    + "плагін працює всередині тіктока з твоїм акаунтом.",
+            "Plugins are put there by whoever runs the mod. Install what you trust: "
+                    + "a plugin runs inside TikTok with your account.");
 
     static final String SAVE = pick("Сохранить", "Зберегти", "Save");
 

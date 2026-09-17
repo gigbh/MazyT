@@ -151,6 +151,21 @@ public static final String KEY = "badges_on";
 
     private static volatile boolean started;
 
+    /** The mod's own note, for anything that needs a picture and has none. */
+    public static Bitmap note() {
+        Bitmap known = ownNote;
+        if (known != null) return known;
+        try {
+            byte[] png = android.util.Base64.decode(Emblem.PNG, android.util.Base64.DEFAULT);
+            ownNote = BitmapFactory.decodeByteArray(png, 0, png.length);
+        } catch (Throwable error) {
+            Diary.note("badge: " + error);
+        }
+        return ownNote;
+    }
+
+    private static volatile Bitmap ownNote;
+
     /** One badge by the name the server gives it. */
     public static Badge byId(String id) {
         for (Badge badge : numbered) {
@@ -247,9 +262,30 @@ public static final String KEY = "badges_on";
                     prefetch(context);
                     Diary.note("badges: " + known.size() + " accounts, "
                             + numbered.length + " badges");
+                    told();
                 }
             }
         });
+    }
+
+    /**
+     * Somebody waiting to hear that the list has arrived.
+     *
+     * The settings screen, and nothing else: it is built from what is known at
+     * the moment it opens, and on the first run after an update what is known
+     * is a file cached before any of this existed. Without this the free badge
+     * would be offered a minute after the screen it is offered on was drawn.
+     */
+    private static volatile Runnable waiting;
+
+    public static void tell(Runnable then) {
+        waiting = then;
+    }
+
+    private static void told() {
+        final Runnable then = waiting;
+        if (then == null) return;
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(then);
     }
 
     /** When the free badge stops being given out, as the server reckons it. */
@@ -406,6 +442,13 @@ public static final String KEY = "badges_on";
         try {
             Bitmap bitmap = BitmapFactory.decodeByteArray(raw, 0, raw.length);
             if (bitmap == null) return null;
+            // trimmed the way the mod's own note is trimmed. A badge is drawn
+            // into a box the height of the line it sits in, so a picture with
+            // empty margin around it comes out smaller than one without --
+            // which is why the server's badges looked shrunken beside it.
+            // spelled out, because `Badge` inside this class means the one
+            // nested in it rather than the class that draws them
+            bitmap = cat.narezany.margyt.Badge.crop(bitmap);
             synchronized (pictures) {
                 pictures.put(path, bitmap);
             }

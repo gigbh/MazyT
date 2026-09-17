@@ -90,6 +90,10 @@ public class SettingsActivity extends Activity {
         skin = Skin.remembered(this);
         dressTheWindow();
         maybeAskForSupport();
+        // the list may still be the one cached before this screen existed, so
+        // redraw when the server answers rather than waiting for a tap
+        Badges.tell(this::rebuild);
+        Mine.ask(this::rebuild);
 
         ScrollView scroll = page = new ScrollView(this);
         scroll.setBackgroundColor(skin.page);
@@ -236,7 +240,11 @@ public class SettingsActivity extends Activity {
         video.addView(toggleRow("timeline", Text.SEEKBAR, Seekbar.isEnabled(),
                 Seekbar::setEnabled));
         video.addView(line());
-        video.addView(toggleRow("visibility_off", Text.DIM, Dim.isEnabled(), on -> {
+        video.addView(toggleRow("info", Text.ALWAYS_DATE, Dates.isEnabled(),
+                Dates::setEnabled));
+        video.addView(caption(Text.ALWAYS_DATE_NOTE));
+        video.addView(line());
+        video.addView(betaRow("visibility_off", Text.DIM, Dim.isEnabled(), on -> {
             Dim.setEnabled(on);
             rebuild();
         }));
@@ -305,6 +313,14 @@ public class SettingsActivity extends Activity {
 
         column.addView(section(Text.PLUGINS));
         LinearLayout plugins = card();
+        plugins.addView(actionRow("extension", Text.STORE, Text.STORE_OPEN, () -> {
+            try {
+                startActivity(new Intent(this, StoreActivity.class));
+            } catch (Throwable error) {
+                Toast.makeText(this, String.valueOf(error), Toast.LENGTH_LONG).show();
+            }
+        }));
+        plugins.addView(line());
         plugins.addView(installRow());
         plugins.addView(line());
         plugins.addView(linkRow("article", Text.PLUGIN_DOCS, Text.PLUGIN_DOCS_NOTE, DOCS));
@@ -625,6 +641,10 @@ public class SettingsActivity extends Activity {
         LinearLayout rows = new LinearLayout(this);
         rows.setOrientation(LinearLayout.VERTICAL);
 
+        // the list the server last sent wins over whatever was being
+        // rearranged: the first answer on a cold start is empty, and without
+        // this that empty answer is what stayed on screen
+        if (Mine.tookFresh()) ordering = null;
         if (ordering == null) ordering = Mine.held();
         if (ordering.isEmpty()) {
             rows.addView(quiet(Mine.everAsked() ? Text.MINE_NONE : Text.MINE_WAIT));
@@ -669,14 +689,35 @@ public class SettingsActivity extends Activity {
             rows.addView(sized(row, 60));
         }
 
-        rows.addView(line());
-        rows.addView(actionRow("download", Text.SAVE, null, () -> Mine.save(ordering,
+        rows.addView(button(Text.MINE_SAVE, () -> Mine.save(ordering,
                 (ok, trouble) -> {
                     Screen.say(ok ? Text.MINE_SAVED : Text.MINE_TOO_OFTEN);
                     ordering = null;
                     rebuild();
                 })));
         return rows;
+    }
+
+    /** Something to press, rather than a row that happens to do something. */
+    private View button(String title, final Runnable action) {
+        TextView view = new TextView(this);
+        view.setText(title);
+        view.setTextColor(onAccent());
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        view.setTypeface(Typeface.DEFAULT_BOLD);
+        view.setGravity(Gravity.CENTER);
+        view.setPadding(0, dp(13), 0, dp(13));
+        GradientDrawable pill = new GradientDrawable();
+        pill.setColor(Accent.colour());
+        pill.setCornerRadius(dp(14));
+        view.setBackground(pill);
+        view.setOnClickListener(v -> action.run());
+
+        LinearLayout holder = new LinearLayout(this);
+        holder.setPadding(dp(16), dp(12), dp(16), dp(16));
+        holder.addView(view, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return holder;
     }
 
     private View mover(String arrow, boolean can, final Runnable action) {
@@ -700,9 +741,13 @@ public class SettingsActivity extends Activity {
                 ? null : Badges.picture(this, badge.image);
         if (picture != null) {
             view.setImageBitmap(picture);
-            if (badge.colour != 0) {
-                view.setColorFilter(badge.colour, android.graphics.PorterDuff.Mode.SRC_IN);
-            }
+        } else {
+            // a badge that names no picture of its own is the mod's own note,
+            // which is the same thing it is drawn as beside a name
+            view.setImageBitmap(Badges.note());
+        }
+        if (badge.colour != 0) {
+            view.setColorFilter(badge.colour, android.graphics.PorterDuff.Mode.SRC_IN);
         }
         return view;
     }
