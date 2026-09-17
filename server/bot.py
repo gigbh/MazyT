@@ -23,6 +23,7 @@ import os
 import re
 import sqlite3
 import sys
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -108,7 +109,7 @@ def linked_by_tg(tg):
 
 # ------------------------------------------------------------ looking up
 
-def account(which):
+def account(which, patience=20):
     """An account from an id or an @name, as far as anything can tell.
 
     An id is taken as it is: TikTok will not confirm one and nothing here
@@ -118,17 +119,44 @@ def account(which):
     which = which.strip().lstrip("@")
     if which.isdigit() and 6 <= len(which) <= 24:
         return {"uid": which, "username": "", "nickname": "", "avatar": ""}
-    return by_name(which)
+    return by_name(which, patience)
 
 
-def by_name(name):
+#: names looked up lately -- name -> (when, profile or None)
+SEEN = {}
+KEEPS = 300
+FORGETS = 60
+
+
+def remembered(name):
+    found = SEEN.get(name.lower())
+    if not found:
+        return False, None
+    when, who = found
+    if time.time() - when > (KEEPS if who else FORGETS):
+        return False, None
+    return True, who
+
+
+def by_name(name, patience=20):
+    """The account behind an @name, read off its profile page.
+
+    Answers are kept for a few minutes because a name is asked for far more
+    often than it changes: an inline search asks again on every key pressed,
+    and reading the page every time is what made the bot stop answering
+    anything at all.
+    """
     if not re.match(r"^[A-Za-z0-9._]{2,24}$", name):
         return None
+    known, who = remembered(name)
+    if known:
+        return who
+
     try:
         request = urllib.request.Request(
             "https://www.tiktok.com/@" + urllib.parse.quote(name),
             headers={"User-Agent": BROWSER, "Accept-Language": "en"})
-        with urllib.request.urlopen(request, timeout=20) as answer:
+        with urllib.request.urlopen(request, timeout=patience) as answer:
             page = answer.read(900000).decode("utf-8", "replace")
     except Exception:
         return None
@@ -137,14 +165,17 @@ def by_name(name):
     if not found:
         found = re.search(r'"id":"(\d{6,24})","shortId"', page)
     if not found:
+        SEEN[name.lower()] = (time.time(), None)
         return None
 
-    return {
+    who = {
         "uid": found.group(1),
         "username": name,
         "nickname": one(page, r'"nickname":"(.*?)"'),
         "avatar": one(page, r'"avatarMedium":"(.*?)"').replace("\\u002F", "/"),
     }
+    SEEN[name.lower()] = (time.time(), who)
+    return who
 
 
 def one(page, pattern):
@@ -214,6 +245,24 @@ def why(trouble):
     return trouble
 
 
+#: what the update being handled came from, for the answer to go back to
+CURRENT = threading.local()
+
+
+def here(chat):
+    """The fields an answer needs to land where the question was asked.
+
+    In a group that keeps topics every message belongs to one, and an answer
+    without a topic goes to General -- which can be closed, and then it is
+    refused outright rather than landing somewhere odd. Only the chat the
+    question came from gets this; a forward to the owner must not.
+    """
+    topic = getattr(CURRENT, "topic", None)
+    if topic and chat == getattr(CURRENT, "chat", None):
+        return {"message_thread_id": topic}
+    return {}
+
+
 def call(what, **fields):
     data = json.dumps(fields).encode("utf-8")
     request = urllib.request.Request(
@@ -276,7 +325,7 @@ def picture(url):
 
 def say(chat, text, reply=None):
     call("sendMessage", chat_id=chat, text=text, parse_mode="HTML",
-         disable_web_page_preview=True,
+         disable_web_page_preview=True, **here(chat),
          **({"reply_to_message_id": reply} if reply else {}))
 
 
@@ -292,6 +341,7 @@ def show(chat, who, reply=None):
     if blob:
         answer = upload("sendPhoto", "photo", "avatar.jpg", blob,
                         chat_id=chat, caption=card, parse_mode="HTML",
+                        **{k: str(v) for k, v in here(chat).items()},
                         **({"reply_to_message_id": str(reply)} if reply else {}))
         if answer.get("ok"):
             return
@@ -317,6 +367,9 @@ def handle(update):
         return
 
     chat = message["chat"]["id"]
+    CURRENT.chat = chat
+    CURRENT.topic = (message.get("message_thread_id")
+                     if message.get("is_topic_message") else None)
     from_who = message.get("from") or {}
     text = (message.get("text") or message.get("caption") or "").strip()
     low = text.lower()
@@ -390,7 +443,9 @@ def inline(query):
     which = (query.get("query") or "").strip()
     results = []
     if which:
-        who = account(which)
+        # an inline answer is due in seconds and then thrown away, so a slow
+        # page is given up on rather than waited for
+        who = account(which, patience=5)
         if who:
             worn = badges_of(who["uid"])
             title = who.get("nickname") or ("@" + who["username"] if who.get("username")
@@ -411,6 +466,26 @@ def inline(query):
          cache_time=30, is_personal=False)
 
 
+#: how many updates may be in hand at once
+ROOM = threading.BoundedSemaphore(8)
+
+
+def apart(update):
+    """One update, out of everybody else's way.
+
+    Reading a profile page takes seconds, and doing it in the polling loop
+    meant one inline search held up every message behind it. Each update is
+    answered on its own thread, with a limit so a flood cannot make
+    thousands of them.
+    """
+    try:
+        handle(update)
+    except Exception as trouble:
+        print("update %s: %s" % (update.get("update_id"), trouble), flush=True)
+    finally:
+        ROOM.release()
+
+
 def main():
     prepare()
     print("bot up", flush=True)
@@ -420,10 +495,8 @@ def main():
                       allowed_updates=["message", "inline_query"])
         for update in answer.get("result", []):
             offset = update["update_id"] + 1
-            try:
-                handle(update)
-            except Exception as trouble:
-                print("update %s: %s" % (update.get("update_id"), trouble), flush=True)
+            ROOM.acquire()
+            threading.Thread(target=apart, args=(update,), daemon=True).start()
         if not answer:
             time.sleep(3)
 
