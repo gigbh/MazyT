@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The MargyT bot.
 
-Three things, and they are all lookups: whose badges are these, whose TikTok
-is this, and here is an icon I drew.
+Two things: whose TikTok profile is this -- the name, the picture and the
+badges -- and here is an icon I drew.
 
 It talks to Telegram by long polling rather than a webhook, which needs no
 certificate and no port open -- the bot asks Telegram for what happened and
@@ -106,16 +106,6 @@ def linked_by_tg(tg):
                                  "nickname": row[2], "avatar": row[3]}
 
 
-def linked_by_name(name):
-    db = service.connect()
-    row = db.execute(
-        "SELECT uid, username, nickname, avatar FROM linked"
-        " WHERE lower(tg_name) = lower(?)", (name.lstrip("@"),)).fetchone()
-    db.close()
-    return None if not row else {"uid": row[0], "username": row[1],
-                                 "nickname": row[2], "avatar": row[3]}
-
-
 # ------------------------------------------------------------ looking up
 
 def account(which):
@@ -207,6 +197,23 @@ def profile_card(who):
 
 # ------------------------------------------------------------- the talking
 
+def why(trouble):
+    """What Telegram actually objected to.
+
+    A refusal arrives as a 400 with the reason in the body, and reading only
+    the status line turns every different mistake into the same "Bad Request"
+    -- which is how a broken picture looked like a broken message for an hour.
+    """
+    body = getattr(trouble, "read", None)
+    if body:
+        try:
+            said = json.loads(body().decode("utf-8", "replace"))
+            return said.get("description") or said
+        except Exception:
+            pass
+    return trouble
+
+
 def call(what, **fields):
     data = json.dumps(fields).encode("utf-8")
     request = urllib.request.Request(
@@ -217,8 +224,54 @@ def call(what, **fields):
             return json.loads(answer.read().decode("utf-8"))
     except Exception as trouble:
         if what != "getUpdates":
-            print("%s: %s" % (what, trouble), flush=True)
+            print("%s: %s" % (what, why(trouble)), flush=True)
         return {}
+
+
+def upload(what, field, name, blob, **fields):
+    """A method call carrying a file, as multipart -- the only way to hand
+    Telegram bytes rather than an address it has to fetch itself."""
+    line = "----margyt%d" % time.time_ns()
+    body = bytearray()
+    for key, value in fields.items():
+        body += ("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n"
+                 % (line, key, value)).encode("utf-8")
+    body += ("--%s\r\nContent-Disposition: form-data; name=\"%s\"; filename=\"%s\"\r\n"
+             "Content-Type: application/octet-stream\r\n\r\n" % (line, field, name)).encode("utf-8")
+    body += blob + ("\r\n--%s--\r\n" % line).encode("utf-8")
+
+    request = urllib.request.Request(
+        API % (token(), what), data=bytes(body),
+        headers={"Content-Type": "multipart/form-data; boundary=" + line})
+    try:
+        with urllib.request.urlopen(request, timeout=90) as answer:
+            return json.loads(answer.read().decode("utf-8"))
+    except Exception as trouble:
+        print("%s: %s" % (what, why(trouble)), flush=True)
+        return {}
+
+
+def picture(url):
+    """The avatar itself, fetched here.
+
+    Handing Telegram the address does not work -- it comes back with "failed
+    to get HTTP URL content", because the CDN does not serve whoever Telegram
+    is. Reading it the way the profile page was read does work, so the bytes
+    go up with the message instead of an address.
+    """
+    if not url.startswith("http"):
+        return None
+    try:
+        request = urllib.request.Request(url, headers={
+            "User-Agent": BROWSER, "Referer": "https://www.tiktok.com/",
+            "Accept": "image/avif,image/webp,image/*,*/*;q=0.8"})
+        with urllib.request.urlopen(request, timeout=25) as answer:
+            if not (answer.headers.get("Content-Type") or "").startswith("image/"):
+                return None
+            blob = answer.read(4 * 1024 * 1024)
+    except Exception:
+        return None
+    return blob or None
 
 
 def say(chat, text, reply=None):
@@ -230,17 +283,16 @@ def say(chat, text, reply=None):
 def show(chat, who, reply=None):
     """A profile with its picture, when there is one to show.
 
-    The avatar comes off the same page the id did, so there is nothing extra
-    to fetch and nothing to store: the address is handed to Telegram and
-    Telegram fetches it. If that fails -- the address is signed and does
-    expire -- the words go out on their own rather than nothing going out.
+    The address comes off the same page the id did. If the picture cannot be
+    had -- the address is signed and does expire -- the words go out on their
+    own rather than nothing going out.
     """
     card = profile_card(who)
-    avatar = who.get("avatar") or ""
-    if avatar.startswith("http"):
-        answer = call("sendPhoto", chat_id=chat, photo=avatar, caption=card,
-                      parse_mode="HTML",
-                      **({"reply_to_message_id": reply} if reply else {}))
+    blob = picture(who.get("avatar") or "")
+    if blob:
+        answer = upload("sendPhoto", "photo", "avatar.jpg", blob,
+                        chat_id=chat, caption=card, parse_mode="HTML",
+                        **({"reply_to_message_id": str(reply)} if reply else {}))
         if answer.get("ok"):
             return
     say(chat, card, reply)
@@ -248,11 +300,11 @@ def show(chat, who, reply=None):
 
 HELP = (
     "<b>MargyT</b>\n\n"
-    "<b>бейджи</b> &lt;айди или @имя&gt; — чьи это значки\n"
-    "<b>я</b> &lt;айди или @имя&gt; — привязать свой профиль\n"
-    "<b>что за профиль</b> — ответом на сообщение, или с @именем в телеграме\n"
+    "<b>профиль</b> &lt;ник в тиктоке или айди&gt; — ник, аватарка и значки\n"
+    "<b>профиль</b> — твой, если привязан\n"
+    "<b>я</b> &lt;ник в тиктоке или айди&gt; — привязать свой профиль\n"
     "<b>иконка</b> — пришли картинку документом и свой айди, попадёт владельцу\n\n"
-    "В любом чате можно написать <code>@%s имя</code> — покажет то же самое."
+    "В любом чате можно написать <code>@%s ник</code> — покажет то же самое."
 )
 
 
@@ -283,14 +335,22 @@ def handle(update):
         me = call("getMe").get("result", {}).get("username", "margyt_bot")
         return say(chat, HELP % me)
 
-    if low.startswith("бейджи") or low.startswith("значки") or low.startswith("/badges"):
+    # One name to ask about, and it is the TikTok one. A telegram name is a
+    # different thing that happens to look the same, and having both meant
+    # guessing which was meant.
+    if low.startswith("профиль") or low.startswith("/profile"):
         which = text.split(maxsplit=1)[1].strip() if len(text.split()) > 1 else ""
-        if not which:
-            return say(chat, "Кого смотрим? Напиши айди или @имя.")
-        who = account(which)
-        if not who:
-            return say(chat, "Не нашёл такого.")
-        return show(chat, who, message["message_id"])
+        if which:
+            who = account(which)
+            if not who:
+                return say(chat, "Не нашёл такого в тиктоке.", message["message_id"])
+            return show(chat, who, message["message_id"])
+        mine = linked_by_tg(from_who.get("id"))
+        if not mine:
+            return say(chat, "Чей? Напиши ник в тиктоке: <code>профиль narezany</code>\n"
+                             "Или привяжи свой: <code>я narezany</code>",
+                       message["message_id"])
+        return show(chat, fresher(mine), message["message_id"])
 
     if low.startswith("я ") or low.startswith("/link"):
         which = text.split(maxsplit=1)[1].strip() if len(text.split()) > 1 else ""
@@ -300,24 +360,6 @@ def handle(update):
                              "или <code>я @narezany</code>")
         link(from_who.get("id"), from_who.get("username", ""), who["uid"], who)
         return show(chat, who)
-
-    if low.startswith("что за профиль") or low.startswith("/who"):
-        reply = message.get("reply_to_message")
-        if reply:
-            found = linked_by_tg((reply.get("from") or {}).get("id"))
-            if not found:
-                return say(chat, "Этот человек не привязывал профиль.",
-                           message["message_id"])
-            return show(chat, fresher(found), message["message_id"])
-
-        parts = text.split()
-        if len(parts) >= 4:
-            found = linked_by_name(parts[3])
-            if not found:
-                return say(chat, "Не знаю такого.", message["message_id"])
-            return show(chat, fresher(found), message["message_id"])
-        return say(chat, "Ответь этой командой на чьё-нибудь сообщение "
-                         "или добавь @имя в телеграме.", message["message_id"])
 
     if low.startswith("иконка"):
         return say(chat, "Пришли картинку <b>документом</b>, а в подписи — "
@@ -348,7 +390,7 @@ def inline(query):
     which = (query.get("query") or "").strip()
     results = []
     if which:
-        who = account(which) or linked_by_name(which)
+        who = account(which)
         if who:
             worn = badges_of(who["uid"])
             title = who.get("nickname") or ("@" + who["username"] if who.get("username")
