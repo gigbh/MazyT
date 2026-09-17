@@ -53,7 +53,7 @@ WHO = os.path.join(HERE, "admin.txt")
 #: badge stays on everyone who took it and is offered to nobody -- which is
 #: what makes it worth having and what makes its wording true.
 FREE = "old"
-FREE_UNTIL = 1758315600          # 2025-09-20 00:00 UTC+3
+FREE_UNTIL = 1789851600          # 2026-09-20 00:00 UTC+3
 
 #: how often one account, or one address, may change anything
 EVERY = 60
