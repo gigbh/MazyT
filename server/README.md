@@ -8,9 +8,17 @@ anything about their own -- which of theirs to show, and in what order.
 ## What is here
 
     badges.py    the service: the standard library, one sqlite file
+    panel.py     the pages the panel is made of
+    bot.py       the telegram bot
     seed.py      fills it from badges.json, once
     badgectl     grant, take back, look up
     icons/       the pictures badges are drawn with
+    plugins/     what the store offers
+
+Two secrets, both written by hand on the server and neither in this
+repository: `admin.txt` is who may use the panel, `bot.txt` is the bot's
+token. Both are read at the moment they are needed, so replacing one is
+writing the file.
 
 No framework, because there is nothing a framework would do here. nginx sits
 in front for rate limiting; the service listens on localhost only.
@@ -46,10 +54,40 @@ What the server does not trust is anything that decides what is *given*:
 - nginx limits requests per address as well: reads and writes separately,
   since a flood would aim at writes.
 
+## The panel
+
+`/admin`, with the name and password from `admin.txt`. Badges: what exists, who
+wears each one, handing one out to a list of account ids, taking one back, and
+making a new one with a picture uploaded rather than named. Plugins: what the
+store offers, and adding one by uploading the packed `.mtp` -- the manifest and
+the icon are read out of that file rather than typed in, so what the store says
+about a plugin is what the phone will load.
+
+## The bot
+
+`@margy_robot`, by long polling: no certificate, no port, nothing to expose. It
+does three things.
+
+    бейджи <айди или @имя>     whose badges are these
+    я <айди или @имя>          link your own TikTok account
+    что за профиль             as a reply, or with somebody's @name in Telegram
+
+And an icon sent as a document with an account id in the caption is forwarded
+to whoever decides.
+
+Looking an account up by its @name has no API behind it: the profile page is
+fetched and the id taken out of the blob the page carries for its own use. That
+works today and is nobody's promise -- when it stops, the bot says it cannot
+find them rather than inventing an answer.
+
+Inline mode has to be turned on in BotFather (`/setinline`) before the bot can
+answer in other chats; nothing here can do that.
+
 ## Running it
 
-    systemctl status margyt-badges
+    systemctl status margyt-badges margyt-bot
     journalctl -u margyt-badges -f
+    journalctl -u margyt-bot -f
 
     badgectl list
     badgectl grant supporter 7551880794956989495
