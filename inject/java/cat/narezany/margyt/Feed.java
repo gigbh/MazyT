@@ -87,10 +87,28 @@ public final class Feed {
         }
     }
 
+    /**
+     * Your own post, which is never hidden from you.
+     *
+     * These filters are for recommendations, but every list of posts goes
+     * through the same place, including your own profile. Turn off photo
+     * posts and your own vanish from your own page.
+     */
+    private static boolean mine(Aweme post) {
+        try {
+            String me = Account.id();
+            if (me == null || me.length() == 0) return false;
+            return me.equals(post.getAuthorUid());
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
     /** Whether this post is one the person asked not to see. */
     private static boolean unwanted(Object item) {
         if (!(item instanceof Aweme)) return false;
         Aweme post = (Aweme) item;
+        if (mine(post)) return false;
         try {
             if (isEnabled() && post.isAd()) return true;
             if (hides(KEY_LIVE) && isLive(post)) return true;

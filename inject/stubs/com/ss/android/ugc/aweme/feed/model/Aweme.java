@@ -28,6 +28,10 @@ public class Aweme {
     }
 
     /** There on a slideshow and nowhere else, which is how one is known. */
+    public String getAuthorUid() {
+        throw new RuntimeException("stub");
+    }
+
     public PhotoModeImageInfo getPhotoModeImageInfo() {
         throw new UnsupportedOperationException("stub");
     }
