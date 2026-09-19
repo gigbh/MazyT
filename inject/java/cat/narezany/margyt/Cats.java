@@ -221,7 +221,9 @@ public final class Cats {
             char c = path.charAt(i);
             out.append(Character.isLetterOrDigit(c) || c == '.' ? c : '_');
         }
-        return out.toString();
+        String cleaned = out.toString();
+        // "." and ".." are not names, they are places
+        return cleaned.replace("..", "__");
     }
 
     private static void draw(Context context, Cat cat, byte[] raw) {

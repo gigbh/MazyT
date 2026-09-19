@@ -249,7 +249,7 @@ public final class Banner {
      */
     private static void picture(final Context context, final String uid,
                                 final String address, final View into) {
-        final String key = uid + "-" + Looks.bannerVersion(uid);
+        final String key = safe(uid + "-" + Looks.bannerVersion(uid));
         Bitmap known;
         synchronized (kept) {
             if (kept.containsKey(key)) {
@@ -285,6 +285,24 @@ public final class Banner {
                 });
             }
         });
+    }
+
+    /**
+     * A file name that cannot be a path.
+     *
+     * The uid and the version come off the server over plain http, so both are
+     * somebody else's words until proven otherwise. A name that kept its
+     * slashes and dots would let an answer of "../../databases/x" write
+     * wherever it liked.
+     */
+    private static String safe(String name) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < name.length() && i < 80; i++) {
+            char c = name.charAt(i);
+            out.append(Character.isLetterOrDigit(c) || c == '-' ? c : '_');
+        }
+        String cleaned = out.toString();
+        return cleaned.isEmpty() ? "banner" : cleaned;
     }
 
     /** Worn once per person, so a recycled header does not keep somebody else's. */

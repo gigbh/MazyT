@@ -479,6 +479,8 @@ public static final String KEY = "badges_on";
             char c = path.charAt(i);
             out.append(Character.isLetterOrDigit(c) || c == '.' ? c : '_');
         }
-        return out.toString();
+        String cleaned = out.toString();
+        // "." and ".." are not names, they are places
+        return cleaned.replace("..", "__");
     }
 }
