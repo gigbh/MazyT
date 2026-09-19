@@ -6,7 +6,6 @@ import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ImageView;
 
 import java.io.File;
 import java.io.InputStream;
@@ -127,55 +126,114 @@ public final class Banner {
 
     // ------------------------------------------------------------- showing
 
+    /** The header's own background, to put back when a profile has none. */
+    private static final java.util.WeakHashMap<View, Object> before =
+            new java.util.WeakHashMap<View, Object>();
+
     /**
-     * Put somebody's banner behind the profile they just opened.
+     * Put somebody's banner on the profile they just opened.
      *
-     * The name's own view is the way in: walk up until something is as wide
-     * as the screen, and that is the header. Anything unexpected and nothing
-     * happens, which is the right amount of stubbornness for decoration.
+     * The picture becomes the header's background rather than a view of its
+     * own. A view sits in the layout as a rectangle of its own and pushes
+     * everything down; a background takes the shape the header already has
+     * and the avatar and the name stay on top of it, which is what a banner
+     * is meant to look like.
      */
     public static void show(final View nameView, final String uid) {
         if (nameView == null || uid == null) return;
         try {
-            ViewGroup header = headerOf(nameView);
+            View header = headerOf(nameView);
             if (header == null) return;
-            ImageView had = (ImageView) header.findViewWithTag(TAG);
             String address = Looks.banner(uid);
             if (address == null) {
-                if (had != null) header.removeView(had);
+                restore(header);
                 return;
             }
-
-            final Context context = nameView.getContext();
-
-            ImageView view = had;
-            if (view == null) {
-                view = new ImageView(context);
-                view.setTag(TAG);
-                view.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                view.setAdjustViewBounds(false);
-                header.addView(view, 0, new ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        (int) (TALL * context.getResources().getDisplayMetrics().density)));
+            synchronized (before) {
+                if (!before.containsKey(header)) before.put(header, header.getBackground());
             }
-            picture(context, uid, address, view);
+            picture(nameView.getContext(), uid, address, header);
         } catch (Throwable error) {
             Diary.note("banner: " + error);
         }
     }
 
-    private static ViewGroup headerOf(View from) {
+    private static void restore(View header) {
+        Object had;
+        synchronized (before) {
+            if (!before.containsKey(header)) return;
+            had = before.remove(header);
+        }
+        try {
+            header.setBackground((android.graphics.drawable.Drawable) had);
+            header.setTag(TAG, null);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * The view the picture goes behind.
+     *
+     * The name is the way in: walk up until something is as wide as the
+     * screen and no taller than a header would be. Too tall and it is the
+     * whole page, which would put the picture behind the video grid as well.
+     */
+    private static View headerOf(View from) {
         View at = from;
         int wide = from.getResources().getDisplayMetrics().widthPixels;
-        for (int up = 0; up < 6 && at != null; up++) {
+        int tall = from.getResources().getDisplayMetrics().heightPixels;
+        View best = null;
+        for (int up = 0; up < 7 && at != null; up++) {
             View parent = at.getParent() instanceof View ? (View) at.getParent() : null;
-            if (parent == null) return null;
-            if (parent instanceof ViewGroup && parent.getWidth() >= wide * 0.9f) {
-                return (ViewGroup) parent;
+            if (parent == null) break;
+            if (parent instanceof ViewGroup && parent.getWidth() >= wide * 0.9f
+                    && parent.getHeight() > 0 && parent.getHeight() < tall * 0.75f) {
+                best = parent;
             }
             at = parent;
         }
-        return null;
+        return best;
+    }
+
+    /** Centre-cropped into whatever shape the header turns out to be. */
+    private static final class Painted extends android.graphics.drawable.Drawable {
+        private final Bitmap picture;
+        private final android.graphics.Paint brush = new android.graphics.Paint(
+                android.graphics.Paint.ANTI_ALIAS_FLAG
+                        | android.graphics.Paint.FILTER_BITMAP_FLAG);
+
+        Painted(Bitmap picture) {
+            this.picture = picture;
+        }
+
+        @Override
+        public void draw(android.graphics.Canvas canvas) {
+            android.graphics.Rect bounds = getBounds();
+            if (picture == null || bounds.width() <= 0 || bounds.height() <= 0) return;
+            float scale = Math.max((float) bounds.width() / picture.getWidth(),
+                    (float) bounds.height() / picture.getHeight());
+            float across = picture.getWidth() * scale;
+            float down = picture.getHeight() * scale;
+            float left = bounds.left + (bounds.width() - across) / 2f;
+            float top = bounds.top + (bounds.height() - down) / 2f;
+            canvas.drawBitmap(picture, null,
+                    new android.graphics.RectF(left, top, left + across, top + down), brush);
+        }
+
+        @Override
+        public void setAlpha(int alpha) {
+            brush.setAlpha(alpha);
+        }
+
+        @Override
+        public void setColorFilter(android.graphics.ColorFilter filter) {
+            brush.setColorFilter(filter);
+        }
+
+        @Override
+        public int getOpacity() {
+            return android.graphics.PixelFormat.TRANSLUCENT;
+        }
     }
 
     private static final java.util.Map<String, Bitmap> kept =
@@ -190,20 +248,20 @@ public final class Banner {
      * picture arrives.
      */
     private static void picture(final Context context, final String uid,
-                                final String address, final ImageView into) {
+                                final String address, final View into) {
         final String key = uid + "-" + Looks.bannerVersion(uid);
         Bitmap known;
         synchronized (kept) {
             if (kept.containsKey(key)) {
                 known = kept.get(key);
-                if (known != null) into.setImageBitmap(known);
+                if (known != null) wear(into, known, uid);
                 return;
             }
             kept.put(key, null);
         }
 
-        final java.lang.ref.WeakReference<ImageView> waiting =
-                new java.lang.ref.WeakReference<ImageView>(into);
+        final java.lang.ref.WeakReference<View> waiting =
+                new java.lang.ref.WeakReference<View>(into);
         final File cache = new File(context.getFilesDir(), "margyt/banners/" + key);
         Net.away("banner: fetch", new Runnable() {
             @Override
@@ -221,12 +279,22 @@ public final class Banner {
                 new android.os.Handler(android.os.Looper.getMainLooper()).post(new Runnable() {
                     @Override
                     public void run() {
-                        ImageView view = waiting.get();
-                        if (view != null) view.setImageBitmap(picture);
+                        View view = waiting.get();
+                        if (view != null) wear(view, picture, uid);
                     }
                 });
             }
         });
+    }
+
+    /** Worn once per person, so a recycled header does not keep somebody else's. */
+    private static void wear(View header, Bitmap picture, String uid) {
+        try {
+            if (uid.equals(header.getTag(TAG))) return;
+            header.setBackground(new Painted(picture));
+            header.setTag(TAG, uid);
+        } catch (Throwable ignored) {
+        }
     }
 
     /**

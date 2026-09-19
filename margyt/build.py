@@ -456,6 +456,7 @@ class Build:
         ("margytcraft", "MargyTcraft"),
         ("tigr", "айй тигрр"),
         ("govno", "че за говно"),
+        ("glamour", "Гламурная"),
     ]
 
     ICON_PACKAGE = 0x30
