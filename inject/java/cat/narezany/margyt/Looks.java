@@ -32,6 +32,7 @@ public final class Looks {
 
     private static volatile Map<String, int[]> gradients = new HashMap<String, int[]>();
     private static volatile Map<String, String> banners = new HashMap<String, String>();
+    private static volatile Map<String, Integer> shades = new HashMap<String, Integer>();
 
     /** index in this run's table -> uid */
     private static final String[] slots = new String[MOST];
@@ -71,6 +72,18 @@ public final class Looks {
                 }
             }
             banners = pictures;
+
+            Map<String, Integer> dark = new HashMap<String, Integer>();
+            JSONObject dimmed = root.optJSONObject("banner_dim");
+            if (dimmed != null) {
+                java.util.Iterator<String> keys = dimmed.keys();
+                while (keys.hasNext()) {
+                    String uid = keys.next();
+                    int how = dimmed.optInt(uid, 0);
+                    if (how > 0) dark.put(uid, Integer.valueOf(how));
+                }
+            }
+            shades = dark;
         } catch (Throwable error) {
             Diary.note("looks: " + error);
         }
@@ -99,6 +112,12 @@ public final class Looks {
     /** Which version of somebody's banner is current, for the cache to key on. */
     public static String bannerVersion(String uid) {
         return uid == null ? null : banners.get(uid);
+    }
+
+    /** How dark the owner asked their banner to be drawn, nought to ninety. */
+    public static int bannerDim(String uid) {
+        Integer how = uid == null ? null : shades.get(uid);
+        return how == null ? 0 : how.intValue();
     }
 
     public static boolean hasBanner(String uid) {

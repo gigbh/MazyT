@@ -1195,6 +1195,15 @@ public class SettingsActivity extends Activity {
                         rebuild();
                     })));
         }
+        if (Looks.hasBanner(Account.id())) {
+            card.addView(line());
+            card.addView(slider(Text.BANNER_DIM, Banner.dim(), 90, value ->
+                    Banner.setDim(value, (ok, trouble) -> {
+                        if (!ok) Toast.makeText(this, trouble, Toast.LENGTH_LONG).show();
+                        rebuild();
+                    })));
+            card.addView(quiet(Text.BANNER_DIM_NOTE));
+        }
         card.addView(line());
         card.addView(slider(Text.BANNER_SHADE, Banner.shade(), 100, value -> {
             Banner.setShade(value);

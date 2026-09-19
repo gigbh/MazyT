@@ -243,6 +243,14 @@ final class Text {
             "An unacceptable picture costs you the banner. The second time it costs "
                     + "you the supporter badge.");
 
+    static final String BANNER_DIM = pick(
+            "Затемнение баннера", "Затемнення банера", "Darken the banner");
+
+    static final String BANNER_DIM_NOTE = pick(
+            "Так его увидят все. Хранится вместе с картинкой.",
+            "Так його побачать усі. Зберігається разом із картинкою.",
+            "Everyone sees it this dark. Kept with the picture.");
+
     static final String BANNER_SHADE = pick(
             "Тень под текстом", "Тінь під текстом", "Shadow under the text");
 

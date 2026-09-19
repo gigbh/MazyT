@@ -168,6 +168,41 @@ public final class Banner {
         }
     }
 
+    /**
+     * How dark your own banner is drawn, for everyone who sees it.
+     *
+     * Kept on the server beside the picture, because it is part of how the
+     * banner looks rather than a preference of whoever is looking at it.
+     */
+    public static int dim() {
+        return Looks.bannerDim(Account.id());
+    }
+
+    public static void setDim(final int how, final Said then) {
+        final String uid = Account.id();
+        final String token = Mine.token();
+        if (uid == null || token.length() == 0) {
+            if (then != null) then.said(false, Text.GRADIENT_NO_ACCOUNT);
+            return;
+        }
+        Net.away("banner: dim", new Runnable() {
+            @Override
+            public void run() {
+                boolean ok = false;
+                try {
+                    String said = Net.post(Badges.SERVER + "/shade",
+                            new org.json.JSONObject().put("uid", uid).put("token", token)
+                                    .put("dim", Math.max(0, Math.min(90, how))).toString());
+                    ok = said != null;
+                    if (ok) Badges.refresh();
+                } catch (Throwable error) {
+                    Diary.note("banner: " + error);
+                }
+                answer(then, ok, ok ? "" : Text.BANNER_REFUSED);
+            }
+        });
+    }
+
     /** How heavy the shadow under text on a banner is, nought to a hundred. */
     public static int shade() {
         try {
@@ -323,12 +358,14 @@ public final class Banner {
     /** Centre-cropped into whatever shape the header turns out to be. */
     private static final class Painted extends android.graphics.drawable.Drawable {
         private final Bitmap picture;
+        private final int dim;
         private final android.graphics.Paint brush = new android.graphics.Paint(
                 android.graphics.Paint.ANTI_ALIAS_FLAG
                         | android.graphics.Paint.FILTER_BITMAP_FLAG);
 
-        Painted(Bitmap picture) {
+        Painted(Bitmap picture, int dim) {
             this.picture = picture;
+            this.dim = dim;
         }
 
         @Override
@@ -343,6 +380,9 @@ public final class Banner {
             float top = bounds.top + (bounds.height() - down) / 2f;
             canvas.drawBitmap(picture, null,
                     new android.graphics.RectF(left, top, left + across, top + down), brush);
+            if (dim > 0) {
+                canvas.drawColor((int) (dim * 2.55f) << 24);
+            }
         }
 
         @Override
@@ -397,7 +437,14 @@ public final class Banner {
                     if (blob != null) Net.save(cache, blob);
                 }
                 final Bitmap picture = decode(blob);
-                if (picture == null) return;
+                if (picture == null) {
+                    // forget the asking, or one bad moment on the network
+                    // means no banner until the app is started again
+                    synchronized (kept) {
+                        kept.remove(key);
+                    }
+                    return;
+                }
                 synchronized (kept) {
                     kept.put(key, picture);
                 }
@@ -434,7 +481,7 @@ public final class Banner {
     private static void wear(View header, Bitmap picture, String uid) {
         try {
             if (!uid.equals(header.getTag(TAG))) {
-                header.setBackground(new Painted(picture));
+                header.setBackground(new Painted(picture, Looks.bannerDim(uid)));
                 header.setTag(TAG, uid);
             }
             standing = new java.lang.ref.WeakReference<View>(header);

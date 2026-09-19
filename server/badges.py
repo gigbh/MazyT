@@ -125,7 +125,8 @@ def prepare():
             uid     TEXT PRIMARY KEY,
             kind    TEXT NOT NULL DEFAULT '',
             version TEXT NOT NULL DEFAULT '',
-            changed INTEGER NOT NULL DEFAULT 0
+            changed INTEGER NOT NULL DEFAULT 0,
+            dim     INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS face (
             id   TEXT PRIMARY KEY,
@@ -157,6 +158,8 @@ def prepare():
         db.execute("ALTER TABLE face ADD COLUMN told TEXT NOT NULL DEFAULT ''")
     # a badge grew a short name after it had a description: the description is
     # a sentence and belongs in the popup, the name is what it is called
+    if "dim" not in [row[1] for row in db.execute("PRAGMA table_info(banner)")]:
+        db.execute("ALTER TABLE banner ADD COLUMN dim INTEGER NOT NULL DEFAULT 0")
     badge_columns = [row[1] for row in db.execute("PRAGMA table_info(badge)")]
     for column in ("title_ru", "title_uk"):
         if column not in badge_columns:
@@ -241,14 +244,19 @@ def public():
     gradients = {uid: colours.split(",") for uid, colours
                  in db.execute("SELECT uid, colours FROM gradient")
                  if uid in paid and colours}
-    banners = {uid: version for uid, version
-               in db.execute("SELECT uid, version FROM banner")
-               if uid in paid and version}
+    banners = {}
+    shades = {}
+    for uid, version, dim in db.execute("SELECT uid, version, dim FROM banner"):
+        if uid not in paid or not version:
+            continue
+        banners[uid] = version
+        if dim:
+            shades[uid] = dim
     db.close()
 
     out = [badges[key] for key in sorted(badges)]
     return {"badges": out, "gradients": gradients, "banners": banners,
-            "free_until": FREE_UNTIL, "now": int(time.time())}
+            "banner_dim": shades, "free_until": FREE_UNTIL, "now": int(time.time())}
 
 
 def mine(uid):
@@ -328,6 +336,13 @@ def profile(body, ip):
 
     held = {badge for (badge,) in db.execute(
         "SELECT badge FROM held WHERE uid = ?", (uid,))}
+    if not order and not hidden:
+        # a save with nothing in it is a screen that had not loaded yet, not a
+        # decision to show everything. It used to be the latter, which turned
+        # every badge back on for whoever tapped save too early
+        db.close()
+        return 200, {"badges": mine(uid)}
+
     # only what this account actually holds; a list naming anything else is
     # somebody trying to award themselves something
     place = 0
@@ -337,10 +352,12 @@ def profile(body, ip):
         db.execute("UPDATE held SET place = ?, shown = ? WHERE uid = ? AND badge = ?",
                    (place, 0 if badge in hidden else 1, uid, badge))
         place += 1
+    # a badge the list did not mention keeps whatever it was, unless it was
+    # named as hidden
     for badge in held:
-        if badge not in order:
-            db.execute("UPDATE held SET shown = ? WHERE uid = ? AND badge = ?",
-                       (0 if badge in hidden else 1, uid, badge))
+        if badge not in order and badge in hidden:
+            db.execute("UPDATE held SET shown = 0 WHERE uid = ? AND badge = ?",
+                       (uid, badge))
     wrote(db, uid, ip)
     db.commit()
     out = mine(uid)
@@ -472,6 +489,37 @@ def banner(uid, token, kind, blob, ip):
     db.commit()
     db.close()
     return 200, {"banner": version}
+
+
+def shade(body, ip):
+    """How dark somebody's own banner is drawn, for everyone who sees it.
+
+    Its own endpoint because changing it sends nothing but a number, and
+    making somebody upload five megabytes again to darken a picture would be
+    silly.
+    """
+    db = connect()
+    uid = vouched(db, body)
+    if not uid:
+        db.close()
+        return 403, {"error": "not your account"}
+    if not supporter(db, uid):
+        db.close()
+        return 403, {"error": "supporters only"}
+    row = db.execute("SELECT 1 FROM banner WHERE uid = ?", (uid,)).fetchone()
+    if not row:
+        db.close()
+        return 404, {"error": "no banner to darken"}
+
+    try:
+        dim = int(body.get("dim", 0))
+    except (TypeError, ValueError):
+        dim = 0
+    dim = max(0, min(90, dim))
+    db.execute("UPDATE banner SET dim = ? WHERE uid = ?", (dim, uid))
+    db.commit()
+    db.close()
+    return 200, {"dim": dim}
 
 
 def free(body, ip):
@@ -1134,6 +1182,8 @@ class Handler(BaseHTTPRequestHandler):
             code, out = free(body, ip)
         elif path == "/gradient":
             code, out = gradient(body, ip)
+        elif path == "/shade":
+            code, out = shade(body, ip)
         else:
             code, out = 404, {"error": "no such thing"}
         self.answer(code, out)
