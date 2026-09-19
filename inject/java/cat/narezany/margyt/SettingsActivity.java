@@ -152,10 +152,6 @@ public class SettingsActivity extends Activity {
         column.addView(section(Text.REGION));
         LinearLayout head = card();
         head.addView(switchRow());
-        head.addView(line());
-        head.addView(toggleRow("lock_open", Text.REGION_NOT_AT_LOGIN,
-                Region.stepsAside(), Region::setStepsAside));
-        head.addView(caption(Text.REGION_NOT_AT_LOGIN_NOTE));
         column.addView(wrap(head));
 
         column.addView(section(Text.COUNTRY));
@@ -269,25 +265,28 @@ public class SettingsActivity extends Activity {
             video.addView(quiet(Text.DIM_NOTE));
         }
         video.addView(line());
-        video.addView(toggleRow("brightness_low", Text.NO_HDR, Hdr.isEnabled(), on -> {
+        video.addView(toggleRow("hdr_off", Text.NO_HDR, Hdr.isEnabled(), on -> {
             Hdr.setEnabled(on);
             markChanged();
         }));
         video.addView(caption(Text.NO_HDR_NOTE));
         if (!Hdr.reachable()) video.addView(quiet(Text.NO_HDR_OLD));
-        video.addView(line());
-        video.addView(quiet(Text.FPS_ABOUT));
-        String fps = Rate.name();
+        column.addView(wrap(video));
+
+        column.addView(section(Text.FPS));
+        LinearLayout fps = card();
+        fps.addView(quiet(Text.FPS_ABOUT));
+        String rate = Rate.name();
         for (int i = 0; i < Rate.CHOICES.length; i++) {
             final String which = Rate.CHOICES[i];
-            if (i > 0) video.addView(line());
-            video.addView(pickRow(fpsName(which), which.equals(fps), null, () -> {
+            if (i > 0) fps.addView(line());
+            fps.addView(pickRow(fpsName(which), which.equals(rate), null, () -> {
                 Rate.choose(which);
                 rebuild();
             }));
         }
-        if (!Rate.reachable(this)) video.addView(quiet(Text.FPS_UNSUPPORTED));
-        column.addView(wrap(video));
+        if (!Rate.reachable(this)) fps.addView(quiet(Text.FPS_UNSUPPORTED));
+        column.addView(wrap(fps));
 
         column.addView(section(Text.HIDDEN));
         LinearLayout hidden = card();

@@ -166,21 +166,31 @@ public final class Margy {
         return COUNTRIES[0];
     }
 
-    /** The row the mod is currently reporting. */
-    public static String[] current() {
-        return row(iso());
-    }
+    private static volatile String[] frozen;
+    private static volatile Boolean frozenOn;
 
     /**
-     * True when the mod should be answering for the device at all.
+     * The row the mod reports, decided once per run.
      *
-     * Paused while a sign-in screen is up. TikTok checks harder there than
-     * anywhere else, and a device whose story changes between the feed and
-     * the login form is exactly what it is checking for -- which is how a
-     * perfectly ordinary person ends up told they have made too many
-     * attempts on their first one.
+     * A phone's SIM does not change country while an app is open. Reading the
+     * setting on every call meant ours did. The settings already ask for a
+     * restart when something changes.
      */
+    public static String[] current() {
+        String[] known = frozen;
+        if (known != null) return known;
+        known = row(iso());
+        frozen = known;
+        return known;
+    }
+
+    /** True when the mod should be answering for the device at all. */
     public static boolean active() {
-        return context() != null && isEnabled() && !Region.paused();
+        if (context() == null) return false;
+        Boolean known = frozenOn;
+        if (known != null) return known;
+        boolean on = isEnabled();
+        frozenOn = on;
+        return on;
     }
 }

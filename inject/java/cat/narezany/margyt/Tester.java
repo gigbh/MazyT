@@ -16,19 +16,12 @@ import java.util.List;
 /**
  * What a test build does that a release does not.
  *
- * Test builds go to the people who paid for the work before anyone else sees
- * them, which means the build is out of the author's hands and in a dozen
- * other people's. Two things follow from that.
+ * The screen carries the account id, faint enough not to notice and plain
+ * enough to survive a screenshot. It is redrawn every ten seconds so a shared
+ * phone does not name the wrong person.
  *
- * A screenshot of an unreleased build carries the account id of whoever took
- * it, drawn so faintly that nobody watching a video will see it and plainly
- * enough that a screenshot will. It is redrawn every ten seconds because a
- * still frame is the thing that leaks, and a stale id on a shared phone would
- * name the wrong person.
- *
- * And the mod's own settings are closed to anyone without the supporter badge.
- * The app itself is left entirely alone: sign in, watch, post, all of it. A
- * leaked test build is simply a TikTok with nothing extra in it.
+ * The mod's settings open only for the supporter badge. TikTok itself is left
+ * alone, so a leaked build is just TikTok.
  */
 public final class Tester {
 
@@ -51,13 +44,7 @@ public final class Tester {
         return Version.TEST;
     }
 
-    /**
-     * Whether whoever is signed in paid for this.
-     *
-     * The badge is read from the account's own list, which carries the hidden
-     * ones too: somebody who keeps their badge turned off is still somebody
-     * who has it.
-     */
+    /** The account's own list, hidden badges included. */
     public static boolean allowed() {
         if (!on()) return true;
         try {
@@ -85,12 +72,8 @@ public final class Tester {
 
 
     /**
-     * Put the id on the screen, and keep it there.
-     *
-     * The view goes into the window's own root rather than into any of
-     * TikTok's layouts: nothing of TikTok's knows about it, nothing it does to
-     * its own views takes it away, and it cannot be tapped -- a mark that
-     * swallowed a tap would be a mark people work around.
+     * The view goes into the window's root, not into TikTok's layouts, so
+     * nothing of TikTok's removes it. It cannot be tapped.
      */
     static void mark(final Activity activity) {
         if (!on()) return;
@@ -140,13 +123,7 @@ public final class Tester {
 
     // ---------------------------------------------------------- the refusal
 
-    /**
-     * Say why the settings will not open, on a screen of the mod's own.
-     *
-     * Told plainly rather than hidden: somebody holding a leaked build should
-     * know what it is and what to do about it, and somebody who paid and is
-     * signed into the wrong account should know that is all that happened.
-     */
+    /** Say why the settings will not open, and what to do about it. */
     public static void refuse(Activity activity) {
         try {
             Popup.told(activity, Text.TEST_TITLE, Text.TEST_TEXT, Text.TEST_CLOSE,

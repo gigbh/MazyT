@@ -194,8 +194,7 @@ def stamped(name):
 def supporter(db, uid):
     """Whether this account holds the supporter badge.
 
-    A hidden badge counts. Somebody who paid and would rather not advertise it
-    has still paid, and the things it unlocks are not advertising.
+    A hidden badge counts: somebody who paid and keeps it off has still paid.
     """
     row = db.execute("SELECT 1 FROM held WHERE uid = ? AND badge = ?",
                      (uid, SUPPORTER)).fetchone()
@@ -205,9 +204,7 @@ def supporter(db, uid):
 def vouched(db, body):
     """The account a request speaks for, if it really does.
 
-    Returns the uid, or None. The token is the one handed out at `/claim` and
-    kept by that install; nothing else in the request decides whose account is
-    being changed.
+    Returns the uid, or None. The token is the one handed out at `/claim`.
     """
     uid, token = body.get("uid", ""), body.get("token", "")
     if not sane(uid) or not token:
@@ -237,9 +234,8 @@ def public():
         if badge in badges:
             badges[badge]["users"].append(uid)
 
-    # only the accounts that may have them: a gradient or a banner left over
-    # from somebody whose badge was taken away stops being shown at once,
-    # without anything having to go and delete it
+    # only accounts that still hold the badge, so a gradient or banner left
+    # over from a badge that was taken away stops being shown at once
     paid = {uid for (uid,) in db.execute(
         "SELECT uid FROM held WHERE badge = ?", (SUPPORTER,))}
     gradients = {uid: colours.split(",") for uid, colours
@@ -376,10 +372,8 @@ def waited(db, table, uid, how_long):
 def gradient(body, ip):
     """The colours somebody's name is drawn in, for everyone to see.
 
-    Two things are checked here and nowhere else: that the account holds the
-    supporter badge, and that it has not just changed this. Both are the
-    server's business precisely because the mod is not -- an apk anybody can
-    edit cannot be the thing that decides who is allowed what.
+    Checked here and nowhere else: the supporter badge, and how long ago this
+    changed. An apk anybody can edit cannot decide who is allowed what.
     """
     db = connect()
     uid = vouched(db, body)
@@ -430,8 +424,7 @@ def banner_of(uid):
 def banner(uid, token, kind, blob, ip):
     """The picture across the top of somebody's profile.
 
-    Kept as a file rather than in the database: it is megabytes, it is served
-    as it arrived, and a file is what a web server is good at.
+    Kept as a file: it is megabytes and is served as it arrived.
     """
     db = connect()
     who = vouched(db, {"uid": uid, "token": token})
@@ -899,9 +892,8 @@ class Handler(BaseHTTPRequestHandler):
                 with open(os.path.join(ICONS, picture), "wb") as handle:
                     handle.write(raw)
 
-            # the name is what the badge is called and heads its popup; the
-            # text is the sentence under it. Every badge used to be called
-            # "MargyT" because this is where that was written down
+            # the name heads the popup, the text is the sentence under it.
+            # Every badge was called "MargyT" because of this line
             db = connect()
             db.execute(
                 "INSERT INTO badge (id, colour, image, title, title_ru, title_uk,"
@@ -1094,9 +1086,8 @@ class Handler(BaseHTTPRequestHandler):
     def take_banner(self):
         """A picture, sent as itself.
 
-        Who it belongs to travels in the query and the picture is the whole
-        body: multipart would mean parsing megabytes to find the one part that
-        matters, and there is only ever one part.
+        Who it belongs to travels in the query, the picture is the whole body.
+        Multipart would mean parsing megabytes to find the only part there is.
         """
         said = parse_qs(urlparse(self.path).query)
         uid = (said.get("uid") or [""])[0]

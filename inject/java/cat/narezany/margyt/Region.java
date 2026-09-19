@@ -67,88 +67,13 @@ public final class Region {
         return Plugins.region("network_operator_name", answer);
     }
 
-    // ------------------------------------------------- standing aside to sign in
-
-    static final String KEY_LOGIN = "region_not_at_login";
-
-    private static volatile String onScreen;
-
-    /**
-     * Whether the region is being left alone for the moment.
-     *
-     * Only while a sign-in screen is up. That is where TikTok checks a device
-     * hardest, and a phone whose country and carrier are one thing in the feed
-     * and another at the login form is the shape of thing those checks are
-     * for -- which is how somebody signing in for the first time is told they
-     * have made too many attempts.
-     */
-    public static boolean paused() {
-        return onScreen != null;
-    }
-
-    public static boolean stepsAside() {
-        Context context = Margy.context();
-        if (context == null) return true;
-        try {
-            return context.getSharedPreferences(Margy.PREFS, Context.MODE_PRIVATE)
-                    .getBoolean(KEY_LOGIN, true);
-        } catch (Throwable ignored) {
-            return true;
-        }
-    }
-
-    public static void setStepsAside(boolean aside) {
-        Context context = Margy.context();
-        if (context == null) return;
-        try {
-            context.getSharedPreferences(Margy.PREFS, Context.MODE_PRIVATE)
-                    .edit().putBoolean(KEY_LOGIN, aside).apply();
-        } catch (Throwable ignored) {
-        }
-        if (!aside) onScreen = null;
-    }
-
-    /**
-     * A screen has come up: is it the one to stand aside for?
-     *
-     * Judged by the name of the class, which for the sign-in screens has
-     * carried the word for years and is not something the obfuscator touches
-     * -- these are activities, and an activity's name is in the manifest.
-     */
-    static void notice(android.app.Activity activity) {
-        if (activity == null) return;
-        if (!stepsAside()) {
-            onScreen = null;
-            return;
-        }
-        String name = activity.getClass().getName();
-        String low = name.toLowerCase(java.util.Locale.US);
-        if (low.contains("login") || low.contains("signin") || low.contains("sign_in")
-                || low.contains("authorize") || low.contains("verification")) {
-            if (onScreen == null) Diary.note("region: standing aside for " + name);
-            onScreen = name;
-        } else if (onScreen != null && onScreen.equals(name)) {
-            onScreen = null;
-        }
-    }
-
-    static void leaving(android.app.Activity activity) {
-        if (activity == null || onScreen == null) return;
-        if (onScreen.equals(activity.getClass().getName())) {
-            onScreen = null;
-            Diary.note("region: back to work");
-        }
-    }
-
     /**
      * Whether the phone really has a card in it.
      *
-     * Everything below this line is about a phone with no SIM: a card has to
-     * be invented there or nothing ever asks which country it is from. On a
-     * phone that does have one, inventing a second story is worse than
-     * useless -- the app can see both, they disagree, and a device whose
-     * hardware contradicts itself is what fraud checks are looking for. So
-     * where there is a card, the card answers.
+     * The invented card below is for phones with none, or nothing ever asks
+     * which country the SIM is from. Where a card exists, the card answers:
+     * two APIs describing the same hardware and disagreeing is what a fraud
+     * check looks for.
      */
     private static boolean realCard(TelephonyManager tm) {
         if (tm == null) return false;

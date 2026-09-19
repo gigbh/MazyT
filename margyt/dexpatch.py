@@ -273,11 +273,9 @@ MODEL_SOURCES: List[Tuple[str, str, str, str, str]] = [
     (PAINT_CLASS, "setTypeface", "(%s)%s" % (TYPEFACE, TYPEFACE),
      "(%s%s)%s" % (PAINT_CLASS, TYPEFACE, TYPEFACE), FONTS),
 
-    # the frame rate TikTok asks the system for. It decides this per screen
-    # and per moment, which is how a 120 Hz phone ends up running the feed at
-    # 60 -- so where a rate is asked for, the one chosen in the mod is given
-    # instead. A window can only prefer a rate; an app that keeps asking for
-    # another one wins, unless it is asking through here.
+    # the frame rate TikTok asks the system for, which is how a 120 Hz phone
+    # ends up running the feed at 60. A window can only prefer a rate, and an
+    # app that keeps asking for another one wins unless it asks through here.
     ("Landroid/view/Surface;", "setFrameRate", "(FI)V",
      "(Landroid/view/Surface;FI)V", RATE),
     ("Landroid/view/Surface;", "setFrameRate", "(FII)V",
@@ -383,11 +381,6 @@ FIELD_SOURCES: List[Tuple[str, str, str, str, str]] = [
     (STICKER_ITEM, "stickerBase", STICKER_BASE, "stickerBase", STREAKS),
     (PHOTO_IMAGE, "ownerWatermarkImage", URL_MODEL, "ownerWatermarkImage", DOWNLOAD),
     (PHOTO_IMAGE, "userWatermarkImage", URL_MODEL, "userWatermarkImage", DOWNLOAD),
-    # the page of posts, read as a field. `getItems()` is the polite way and
-    # not the only way: code that was written beside the model reaches for
-    # what it knows is there, and an advertisement dropped from one path and
-    # not the other is an advertisement people still see.
-    (FEED_ITEM_LIST, "items", LIST, "items", FEED),
 ]
 
 # The pink TikTok is built around. Most of the places it is drawn hold it as a
@@ -444,8 +437,8 @@ COLOUR_SOURCES: List[Tuple[str, str, str]] = [
     ("Landroid/widget/ImageView;", "setImageResource",
      "(I)V", "(Landroid/widget/ImageView;I)V"),
     # the two ways an app actually asks for a drawable. Almost nothing calls
-    # Resources.getDrawable directly any more -- it goes through one of these,
-    # which is why a texture pack could replace something and nothing changed
+    # Resources.getDrawable directly any more, which is why a texture pack
+    # could replace a picture and nothing changed
     ("Landroidx/core/content/ContextCompat;", "getDrawable",
      "(Landroid/content/Context;I)Landroid/graphics/drawable/Drawable;",
      "(Landroid/content/Context;I)Landroid/graphics/drawable/Drawable;"),

@@ -8,27 +8,17 @@ import android.os.Build;
 import android.view.Window;
 
 /**
- * HDR video, shown at the brightness of everything else.
+ * HDR video at the brightness of everything else.
  *
- * An HDR video is allowed to ask the screen for more brightness than the
- * screen normally gives, and phones grant it: the video goes searingly bright
- * while the rest of the interface stays where it was. Fine in a cinema, less
- * fine when it arrives unannounced in a feed at night.
- *
- * Nothing here blocks HDR videos or changes which videos play. What it does
- * is take away the extra brightness -- the window asks for a headroom of one,
- * which means "no more than anything else gets" -- so the video plays,
- * correctly, at the brightness of the screen it is on.
- *
- * That headroom is Android 15 and up. Below it, the window is asked for the
- * ordinary colour mode, which some phones honour and some do not, and the
- * setting says so rather than pretending.
+ * The video still plays. What goes away is the extra brightness: the window
+ * asks for a headroom of one. That needs Android 15. Below it only the plain
+ * colour mode can be asked for, and not every phone listens.
  */
 public final class Hdr {
 
     static final String KEY = "no_hdr";
 
-    /** As much brightness as anything else on the screen, and no more. */
+    /** No more brightness than anything else on screen. */
     private static final float FLAT = 1.0f;
 
     private static volatile Boolean cached;

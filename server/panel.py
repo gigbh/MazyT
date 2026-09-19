@@ -130,7 +130,7 @@ def sign_in_page(trouble=""):
 
 
 def when(stamp):
-    """A time, in the only form anyone reads it in: how long ago."""
+    """A time, as how long ago."""
     try:
         gone = int(time.time()) - int(stamp or 0)
     except Exception:

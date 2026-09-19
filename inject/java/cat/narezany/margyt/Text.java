@@ -25,20 +25,6 @@ final class Text {
 
     static final String COUNTRY = pick("Страна", "Країна", "Country");
 
-    static final String REGION_NOT_AT_LOGIN = pick(
-            "Не менять при входе", "Не змінювати при вході", "Leave it alone at sign-in");
-
-    static final String REGION_NOT_AT_LOGIN_NOTE = pick(
-            "На экране входа регион не подменяется. TikTok проверяет устройство "
-                    + "там строже всего, и из-за подмены вход иногда отвечает "
-                    + "«слишком много попыток».",
-            "На екрані входу регіон не підмінюється. TikTok перевіряє пристрій "
-                    + "там найсуворіше, і через підміну вхід інколи відповідає "
-                    + "«забагато спроб».",
-            "The region is left alone on the sign-in screen. TikTok checks the "
-                    + "device hardest there, and the swap is what turns a first "
-                    + "sign-in into \"too many attempts\".");
-
     static final String ACCENT = pick("Цвет TikTok", "Колір TikTok", "TikTok's colour");
 
     static final String ACCENT_COLOUR = pick("Акцент", "Акцент", "Accent");
@@ -216,7 +202,7 @@ final class Text {
     static final String FPS_UNSUPPORTED = pick(
             "Экран столько не умеет — будет ближайшая",
             "Екран стільки не вміє — буде найближча",
-            "The screen cannot do that -- the nearest one instead");
+            "The screen cannot do that, so the nearest one instead");
 
     static final String FONT_SYSTEM = pick("Системный", "Системний", "The system one");
     static final String FONT_SANS = pick("Обычный", "Звичайний", "Sans");

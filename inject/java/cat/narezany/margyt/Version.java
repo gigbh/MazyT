@@ -19,5 +19,5 @@ final class Version {
 
     static final String MOD = "0.23";
     static final String TIKTOK = "46.9.42";
-    static final boolean TEST = false;
+    static final boolean TEST = true;
 }

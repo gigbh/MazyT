@@ -10,21 +10,11 @@ import android.view.Window;
 import android.view.WindowManager;
 
 /**
- * How many frames a second, decided here rather than by TikTok.
+ * The frame rate, chosen here instead of by TikTok.
  *
- * TikTok picks a rate per screen and per situation: a feed at 120 on one
- * phone, 60 on the next, back to 90 when something else is on. Which is
- * reasonable of it and invisible until you are the one watching a 120 Hz
- * screen run at 60.
- *
- * Two things are needed to take that decision away. The window is asked for a
- * display mode with the rate wanted -- a request the system honours where the
- * screen can do it -- and TikTok's own calls asking for a rate are answered
- * with ours instead, because a preference the app overrides a moment later is
- * not a preference.
- *
- * Left alone, nothing here does anything: no mode is asked for and every call
- * goes through untouched.
+ * The window is asked for a display mode with that rate, and TikTok's own
+ * requests for a rate are answered with ours. Asking the window alone is not
+ * enough: the app asks again and wins.
  */
 public final class Rate {
 
@@ -85,13 +75,8 @@ public final class Rate {
 
 
     /**
-     * Ask this window for the rate that was chosen.
-     *
-     * A display mode is asked for by id where one matches, because a bare
-     * preferred rate is a hint the system is free to ignore and often does.
-     * Only modes the screen is already showing at this size are considered:
-     * asking for a different resolution to get a rate would be changing
-     * something nobody asked to change.
+     * A mode is asked for by id where one matches. A bare preferred rate is a
+     * hint the system often ignores. Only modes at the current size count.
      */
     public static void apply(Activity activity) {
         int rate = wanted();
@@ -124,12 +109,7 @@ public final class Rate {
         }
     }
 
-    /**
-     * Whether the screen can actually show what was chosen.
-     *
-     * Asked so the settings can say so plainly rather than letting somebody
-     * pick 120 on a 90 Hz phone and wonder why nothing changed.
-     */
+    /** Whether the screen can show what was chosen, so the settings can say. */
     public static boolean reachable(Activity activity) {
         int rate = wanted();
         if (rate <= 0 || activity == null || Build.VERSION.SDK_INT < 23) return true;
@@ -148,10 +128,7 @@ public final class Rate {
 
     // ------------------------------------------- where TikTok asks for a rate
 
-    /**
-     * TikTok telling the system what it would like, answered with what was
-     * chosen here. Untouched when nothing was.
-     */
+    /** TikTok asking for a rate. Answered with ours, or left alone. */
     public static void setFrameRate(Surface surface, float rate, int compatibility) {
         int ours = wanted();
         try {

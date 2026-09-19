@@ -231,7 +231,12 @@ public final class Fonts {
                 File font = context == null ? null : file(context);
                 if (font != null && font.isFile()) plain = Typeface.createFromFile(font);
             } else if (!SYSTEM.equals(letters)) {
-                plain = Typeface.create(letters, Typeface.NORMAL);
+                // by file first. A phone that does not register "monospace"
+                // or "cursive" hands back plain Roboto for them without
+                // saying so, and the choice looks broken rather than missing
+                File font = systemFont(letters);
+                if (font != null) plain = Typeface.createFromFile(font);
+                if (plain == null) plain = Typeface.create(letters, Typeface.NORMAL);
             }
         } catch (Throwable error) {
             Diary.note("font: " + error);
@@ -286,15 +291,9 @@ public final class Fonts {
     /**
      * The file behind one of the phone's own font families.
      *
-     * A family name is enough for `Typeface.create`, but not for building a
-     * typeface out of two families: that wants a file. Without this every
-     * preset -- the monospace, the serif, the cursive -- came out as plain
-     * Roboto the moment an emoji pack was on, which is to say the choice was
-     * quietly thrown away.
-     *
-     * The files are the ones Android has shipped under these names for years.
-     * A phone that keeps them somewhere else falls through to whatever plain
-     * font it does have, which is better than nothing at all.
+     * Needed twice over. Building letters and emoji into one typeface wants a
+     * file, not a family name. And a phone that never registered "monospace"
+     * or "cursive" answers Typeface.create with plain Roboto and says nothing.
      */
     private static File systemFont(String family) {
         for (String path : filesFor(family)) {
