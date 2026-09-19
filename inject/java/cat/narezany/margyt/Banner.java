@@ -259,27 +259,65 @@ public final class Banner {
     }
 
     /**
-     * The view the picture goes behind.
+     * The view the picture goes behind, or nothing.
      *
-     * The name is the way in: walk up until something is as wide as the
-     * screen and no taller than a header would be. Too tall and it is the
-     * whole page, which would put the picture behind the video grid as well.
+     * A name turns up in more places than a profile: the search box shows one
+     * while you type it, and putting a banner behind that was exactly as odd
+     * as it sounds. So the answer has to look like a header and not merely be
+     * wide: tall enough for an avatar, near the top of the screen, and made of
+     * several pieces. A search box is none of those.
      */
     private static View headerOf(View from) {
+        android.util.DisplayMetrics screen = from.getResources().getDisplayMetrics();
+        int wide = screen.widthPixels;
+        int tall = screen.heightPixels;
+        int least = (int) (150 * screen.density);
+
         View at = from;
-        int wide = from.getResources().getDisplayMetrics().widthPixels;
-        int tall = from.getResources().getDisplayMetrics().heightPixels;
         View best = null;
+        int[] where = new int[2];
         for (int up = 0; up < 7 && at != null; up++) {
             View parent = at.getParent() instanceof View ? (View) at.getParent() : null;
             if (parent == null) break;
             if (parent instanceof ViewGroup && parent.getWidth() >= wide * 0.9f
-                    && parent.getHeight() > 0 && parent.getHeight() < tall * 0.75f) {
-                best = parent;
+                    && parent.getHeight() >= least && parent.getHeight() < tall * 0.75f
+                    && ((ViewGroup) parent).getChildCount() >= 3) {
+                parent.getLocationOnScreen(where);
+                if (where[1] < tall * 0.5f) best = parent;
             }
             at = parent;
         }
         return best;
+    }
+
+    /** The header this last painted, so it can be kept painted. */
+    private static java.lang.ref.WeakReference<View> standing;
+    private static String standingFor;
+
+    /**
+     * Put it back if it came off.
+     *
+     * A profile rebuilds its header as it loads and the mod is only told
+     * whose profile it is for a few seconds around the name arriving. Without
+     * this the banner turned up when that timing worked out and not otherwise.
+     */
+    public static void again() {
+        View header = standing == null ? null : standing.get();
+        String uid = standingFor;
+        if (header == null || uid == null) return;
+        if (!header.isAttachedToWindow()) {
+            standing = null;
+            standingFor = null;
+            return;
+        }
+        if (!Looks.hasBanner(uid)) {
+            restore(header);
+            standing = null;
+            standingFor = null;
+            return;
+        }
+        String address = Looks.banner(uid);
+        if (address != null) picture(header.getContext(), uid, address, header);
     }
 
     /** Centre-cropped into whatever shape the header turns out to be. */
@@ -399,6 +437,8 @@ public final class Banner {
                 header.setBackground(new Painted(picture));
                 header.setTag(TAG, uid);
             }
+            standing = new java.lang.ref.WeakReference<View>(header);
+            standingFor = uid;
             // again on every pass: the header is rebuilt as a profile loads,
             // and text that arrived after the picture has no shadow yet
             shade(header, 0);

@@ -120,7 +120,12 @@ public final class Badge {
     private static void remember(String uid, String name, boolean fromProfile) {
         if (!fromProfile || uid == null || name == null || name.length() == 0) return;
         try {
-            if (Badges.marksFor(uid).length() == 0) return;
+            // a banner or a gradient is reason enough to remember whose
+            // profile this is, badges or not
+            if (Badges.marksFor(uid).length() == 0 && !Looks.hasBanner(uid)
+                    && Looks.of(uid) == null) {
+                return;
+            }
             lastName = name;
             lastUid = uid;
             lastAt = android.os.SystemClock.uptimeMillis();

@@ -422,6 +422,7 @@ public final class Themes {
                             last = now;
                             repaint(root, AGAIN);
                             Badge.rewrite(root);
+                            Banner.again();
                             Dim.apply(activity);
                         }
                     });
