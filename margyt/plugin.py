@@ -32,6 +32,13 @@ from .toolchain import Toolchain
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 API_SOURCES = os.path.join(ROOT, "inject", "java", "cat", "narezany", "margyt", "plugin")
 
+# PluginContext calls into the mod -- Plugins.addRow, Popup.show, Screen.offer,
+# Net.bytes -- and those classes are in the patched apk, not here. Without
+# something to resolve them the api build fails with cannot find symbol, which
+# is what every plugin author ran into. These are declarations only and never
+# reach a plugin's dex: the plugin is dexed with the api as a classpath.
+API_STUBS = os.path.join(ROOT, "inject", "plugin-api")
+
 REQUIRED = ("id", "name", "version", "author", "entry")
 
 
@@ -72,7 +79,8 @@ def main(argv=None) -> int:
             os.makedirs(path)
 
         print("==> Compiling the plugin api")
-        _javac(tools.android_jar, None, api, _java_files(API_SOURCES))
+        _javac(tools.android_jar, None, api,
+               _java_files(API_SOURCES) + _java_files(API_STUBS))
 
         print("==> Compiling %s" % manifest["name"])
         files = _java_files(sources)
