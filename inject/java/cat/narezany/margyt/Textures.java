@@ -100,6 +100,9 @@ public final class Textures {
         synchronized (drawn) {
             drawn.clear();
         }
+        asked = 0;
+        answered = 0;
+        told = false;
         inside = null;
         looked = false;
     }
@@ -342,6 +345,8 @@ public final class Textures {
             // any other one: the paths inside are that build's paths, and
             // swapping half a screenful of pictures is worse than none
             Pack said = read(zip);
+            Diary.note("textures: opening " + said.name + " for TikTok "
+                    + (said.tiktok.length() == 0 ? "any" : said.tiktok));
             if (!said.fits()) {
                 Diary.note("textures: " + said.name + " is for TikTok " + said.tiktok
                         + " and this is " + Version.TIKTOK);
@@ -356,6 +361,27 @@ public final class Textures {
     }
 
     private static final Map<String, Bitmap> drawn = new HashMap<String, Bitmap>();
+
+    /**
+     * How the pack is doing, said once.
+     *
+     * "It does not work" is not something anyone can act on. After a screenful
+     * of pictures the diary says how many were asked for and how many the pack
+     * had, which is the difference between a pack for another build, a pack
+     * with the paths wrong, and a pack that is simply not on.
+     */
+    private static int asked;
+    private static int answered;
+    private static boolean told;
+
+    private static void counted(boolean hit) {
+        asked++;
+        if (hit) answered++;
+        if (told || asked < 200) return;
+        told = true;
+        Diary.note("textures: " + answered + " of " + asked + " pictures came from "
+                + (pack().length() == 0 ? "no pack" : pack()));
+    }
 
     /**
      * Resource number to the path it lives at, remembered.
@@ -411,6 +437,7 @@ public final class Textures {
             }
 
             ZipEntry entry = instead(zip, path);
+            counted(entry != null);
             Bitmap bitmap = null;
             if (entry != null) {
                 InputStream in = zip.getInputStream(entry);

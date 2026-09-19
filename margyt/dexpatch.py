@@ -436,15 +436,6 @@ COLOUR_SOURCES: List[Tuple[str, str, str]] = [
      "Landroid/graphics/drawable/Drawable;"),
     ("Landroid/widget/ImageView;", "setImageResource",
      "(I)V", "(Landroid/widget/ImageView;I)V"),
-    # the two ways an app actually asks for a drawable. Almost nothing calls
-    # Resources.getDrawable directly any more, which is why a texture pack
-    # could replace a picture and nothing changed
-    ("Landroidx/core/content/ContextCompat;", "getDrawable",
-     "(Landroid/content/Context;I)Landroid/graphics/drawable/Drawable;",
-     "(Landroid/content/Context;I)Landroid/graphics/drawable/Drawable;"),
-    ("Landroidx/appcompat/content/res/AppCompatResources;", "getDrawable",
-     "(Landroid/content/Context;I)Landroid/graphics/drawable/Drawable;",
-     "(Landroid/content/Context;I)Landroid/graphics/drawable/Drawable;"),
 
     # A Lottie animation -- the heart, the loading spinners -- is a json file
     # rather than a picture, read as a stream. Which makes it the one thing in
