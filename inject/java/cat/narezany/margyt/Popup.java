@@ -250,7 +250,24 @@ public final class Popup {
         }
     }
 
+    /**
+     * The same card, with something to do once it is gone.
+     *
+     * Dismissing counts: a refusal that only ran its `then` on the button
+     * would leave whoever tapped outside the card sitting on a screen they
+     * were just told they cannot use.
+     */
+    public static void told(Context context, String title, String message,
+                            String button, final Runnable then) {
+        show(context, title, message, button, then);
+    }
+
     public static void show(Context context, String title, String message, String button) {
+        show(context, title, message, button, (Runnable) null);
+    }
+
+    private static void show(Context context, String title, String message,
+                             String button, final Runnable then) {
         try {
             Skin skin = Skin.remembered(context);
             Dialog dialog = new Dialog(context);
@@ -265,6 +282,14 @@ public final class Popup {
 
             dialog.setContentView(card(context, skin, title, message, button, dialog));
             dialog.setCanceledOnTouchOutside(true);
+            if (then != null) {
+                dialog.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
+                    @Override
+                    public void onDismiss(android.content.DialogInterface which) {
+                        then.run();
+                    }
+                });
+            }
             dialog.show();
 
             if (window != null) {
@@ -276,6 +301,7 @@ public final class Popup {
             }
         } catch (Throwable error) {
             Diary.note("popup: " + error);
+            if (then != null) then.run();
         }
     }
 

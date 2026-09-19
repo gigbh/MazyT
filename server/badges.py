@@ -61,6 +61,22 @@ EVERY = 60
 
 MOST_BADGES = 16
 
+#: the badge that makes somebody a supporter, and the two things it unlocks
+SUPPORTER = "supporter"
+
+#: where a banner is kept, and how much of one is accepted
+BANNERS = os.path.join(HERE, "banners")
+BANNER_MOST = 5 * 1024 * 1024
+BANNER_KINDS = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+
+#: how often each may be changed. Not a rule of taste: a banner is megabytes
+#: and a gradient is seen by everyone, and neither needs changing by the second
+GRADIENT_WAIT = 60
+BANNER_WAIT = 5 * 60
+
+#: as many colours as a gradient is worth having
+MOST_COLOURS = 5
+
 
 # --------------------------------------------------------------- the store
 
@@ -78,6 +94,8 @@ def prepare():
             colour  TEXT NOT NULL DEFAULT '',
             image   TEXT NOT NULL DEFAULT '',
             title   TEXT NOT NULL DEFAULT '',
+            title_ru TEXT NOT NULL DEFAULT '',
+            title_uk TEXT NOT NULL DEFAULT '',
             text    TEXT NOT NULL DEFAULT '',
             text_ru TEXT NOT NULL DEFAULT '',
             text_uk TEXT NOT NULL DEFAULT '',
@@ -97,6 +115,17 @@ def prepare():
             token     TEXT NOT NULL,
             claimed   INTEGER NOT NULL,
             written   INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS gradient (
+            uid     TEXT PRIMARY KEY,
+            colours TEXT NOT NULL,
+            changed INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS banner (
+            uid     TEXT PRIMARY KEY,
+            kind    TEXT NOT NULL DEFAULT '',
+            version TEXT NOT NULL DEFAULT '',
+            changed INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS face (
             id   TEXT PRIMARY KEY,
@@ -126,6 +155,13 @@ def prepare():
     # being asked for the table again
     if "told" not in [row[1] for row in db.execute("PRAGMA table_info(face)")]:
         db.execute("ALTER TABLE face ADD COLUMN told TEXT NOT NULL DEFAULT ''")
+    # a badge grew a short name after it had a description: the description is
+    # a sentence and belongs in the popup, the name is what it is called
+    badge_columns = [row[1] for row in db.execute("PRAGMA table_info(badge)")]
+    for column in ("title_ru", "title_uk"):
+        if column not in badge_columns:
+            db.execute("ALTER TABLE badge ADD COLUMN %s TEXT NOT NULL DEFAULT ''"
+                       % column)
     db.commit()
     db.close()
 
@@ -155,14 +191,44 @@ def stamped(name):
         return name
 
 
+def supporter(db, uid):
+    """Whether this account holds the supporter badge.
+
+    A hidden badge counts. Somebody who paid and would rather not advertise it
+    has still paid, and the things it unlocks are not advertising.
+    """
+    row = db.execute("SELECT 1 FROM held WHERE uid = ? AND badge = ?",
+                     (uid, SUPPORTER)).fetchone()
+    return row is not None
+
+
+def vouched(db, body):
+    """The account a request speaks for, if it really does.
+
+    Returns the uid, or None. The token is the one handed out at `/claim` and
+    kept by that install; nothing else in the request decides whose account is
+    being changed.
+    """
+    uid, token = body.get("uid", ""), body.get("token", "")
+    if not sane(uid) or not token:
+        return None
+    row = db.execute("SELECT token FROM owner WHERE uid = ?", (uid,)).fetchone()
+    if not row or not secrets.compare_digest(row[0], token):
+        return None
+    return uid
+
+
 def public():
     """Every badge and who wears it, in the shape the mod already reads."""
     db = connect()
     badges = {}
-    for row in db.execute("SELECT * FROM badge"):
+    for row in db.execute(
+            "SELECT id, colour, image, title, text, text_ru, text_uk, button,"
+            " title_ru, title_uk FROM badge"):
         badges[row[0]] = {
             "id": row[0], "colour": row[1], "image": stamped(row[2]), "title": row[3],
             "text": row[4], "text_ru": row[5], "text_uk": row[6], "button": row[7],
+            "title_ru": row[8], "title_uk": row[9],
             "users": [],
         }
     # the order a person chose is the order their badges are listed in
@@ -170,10 +236,23 @@ def public():
             "SELECT uid, badge FROM held WHERE shown = 1 ORDER BY place, badge"):
         if badge in badges:
             badges[badge]["users"].append(uid)
+
+    # only the accounts that may have them: a gradient or a banner left over
+    # from somebody whose badge was taken away stops being shown at once,
+    # without anything having to go and delete it
+    paid = {uid for (uid,) in db.execute(
+        "SELECT uid FROM held WHERE badge = ?", (SUPPORTER,))}
+    gradients = {uid: colours.split(",") for uid, colours
+                 in db.execute("SELECT uid, colours FROM gradient")
+                 if uid in paid and colours}
+    banners = {uid: version for uid, version
+               in db.execute("SELECT uid, version FROM banner")
+               if uid in paid and version}
     db.close()
 
     out = [badges[key] for key in sorted(badges)]
-    return {"badges": out, "free_until": FREE_UNTIL, "now": int(time.time())}
+    return {"badges": out, "gradients": gradients, "banners": banners,
+            "free_until": FREE_UNTIL, "now": int(time.time())}
 
 
 def mine(uid):
@@ -271,6 +350,135 @@ def profile(body, ip):
     out = mine(uid)
     db.close()
     return 200, {"badges": out}
+
+
+# ----------------------------------------------------- what a supporter gets
+
+def hexed(colour):
+    """One colour, as six hex digits, or nothing."""
+    if not isinstance(colour, str):
+        return ""
+    value = colour.strip().lstrip("#").upper()
+    if len(value) != 6 or any(c not in "0123456789ABCDEF" for c in value):
+        return ""
+    return value
+
+
+def waited(db, table, uid, how_long):
+    """How long is left before this may be changed again, or zero."""
+    row = db.execute("SELECT changed FROM %s WHERE uid = ?" % table, (uid,)).fetchone()
+    if not row:
+        return 0
+    left = how_long - (int(time.time()) - int(row[0] or 0))
+    return left if left > 0 else 0
+
+
+def gradient(body, ip):
+    """The colours somebody's name is drawn in, for everyone to see.
+
+    Two things are checked here and nowhere else: that the account holds the
+    supporter badge, and that it has not just changed this. Both are the
+    server's business precisely because the mod is not -- an apk anybody can
+    edit cannot be the thing that decides who is allowed what.
+    """
+    db = connect()
+    uid = vouched(db, body)
+    if not uid:
+        db.close()
+        return 403, {"error": "not your account"}
+    if not supporter(db, uid):
+        db.close()
+        return 403, {"error": "supporters only"}
+
+    left = waited(db, "gradient", uid, GRADIENT_WAIT)
+    if left:
+        db.close()
+        return 429, {"error": "too often", "wait": left}
+
+    asked = body.get("colours")
+    if asked is None:
+        db.execute("DELETE FROM gradient WHERE uid = ?", (uid,))
+        db.commit()
+        db.close()
+        return 200, {"colours": []}
+
+    if not isinstance(asked, list) or len(asked) < 2 or len(asked) > MOST_COLOURS:
+        db.close()
+        return 400, {"error": "two to %d colours" % MOST_COLOURS}
+    colours = [hexed(one) for one in asked]
+    if not all(colours):
+        db.close()
+        return 400, {"error": "colours are six hex digits"}
+
+    db.execute("INSERT INTO gradient (uid, colours, changed) VALUES (?,?,?)"
+               " ON CONFLICT(uid) DO UPDATE SET colours = excluded.colours,"
+               " changed = excluded.changed",
+               (uid, ",".join(colours), int(time.time())))
+    db.commit()
+    db.close()
+    return 200, {"colours": colours}
+
+
+def banner_of(uid):
+    for ending in (".jpg", ".png", ".webp"):
+        path = os.path.join(BANNERS, uid + ending)
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def banner(uid, token, kind, blob, ip):
+    """The picture across the top of somebody's profile.
+
+    Kept as a file rather than in the database: it is megabytes, it is served
+    as it arrived, and a file is what a web server is good at.
+    """
+    db = connect()
+    who = vouched(db, {"uid": uid, "token": token})
+    if not who:
+        db.close()
+        return 403, {"error": "not your account"}
+    if not supporter(db, who):
+        db.close()
+        return 403, {"error": "supporters only"}
+
+    left = waited(db, "banner", who, BANNER_WAIT)
+    if left:
+        db.close()
+        return 429, {"error": "too often", "wait": left}
+
+    if not blob:
+        for path in [banner_of(who)]:
+            if path:
+                os.remove(path)
+        db.execute("DELETE FROM banner WHERE uid = ?", (who,))
+        db.commit()
+        db.close()
+        return 200, {"banner": ""}
+
+    ending = BANNER_KINDS.get(kind or "")
+    if not ending:
+        db.close()
+        return 415, {"error": "jpeg, png or webp"}
+    if len(blob) > BANNER_MOST:
+        db.close()
+        return 413, {"error": "5 MB at most"}
+
+    os.makedirs(BANNERS, exist_ok=True)
+    old = banner_of(who)
+    if old:
+        os.remove(old)
+    with open(os.path.join(BANNERS, who + ending), "wb") as handle:
+        handle.write(blob)
+
+    version = hashlib.sha256(blob).hexdigest()[:12]
+    db.execute("INSERT INTO banner (uid, kind, version, changed) VALUES (?,?,?,?)"
+               " ON CONFLICT(uid) DO UPDATE SET kind = excluded.kind,"
+               " version = excluded.version, changed = excluded.changed",
+               (who, kind, version, int(time.time())))
+    db.commit()
+    db.close()
+    return 200, {"banner": version}
 
 
 def free(body, ip):
@@ -604,8 +812,15 @@ class Handler(BaseHTTPRequestHandler):
                     "SELECT b.id, b.colour, b.image, b.title, b.text, COUNT(h.uid)"
                     " FROM badge b LEFT JOIN held h ON h.badge = b.id"
                     " GROUP BY b.id ORDER BY b.id")]
+            looks = [{"uid": r[0], "version": r[1], "changed": r[2]}
+                     for r in db.execute(
+                         "SELECT uid, version, changed FROM banner ORDER BY changed DESC")]
+            colours = [{"uid": r[0], "colours": r[1].split(","), "changed": r[2]}
+                       for r in db.execute(
+                           "SELECT uid, colours, changed FROM gradient"
+                           " ORDER BY changed DESC")]
             db.close()
-            self.html(panel.main_page(badges, plugins()["plugins"],
+            self.html(panel.main_page(badges, plugins()["plugins"], looks, colours,
                                       query.get("said", [""])[0]))
             return
 
@@ -684,20 +899,21 @@ class Handler(BaseHTTPRequestHandler):
                 with open(os.path.join(ICONS, picture), "wb") as handle:
                     handle.write(raw)
 
-            said = {"id": which, "colour": field("colour"), "image": picture,
-                    "text": field("text"), "text_ru": field("text_ru"),
-                    "text_uk": field("text_uk")}
+            # the name is what the badge is called and heads its popup; the
+            # text is the sentence under it. Every badge used to be called
+            # "MargyT" because this is where that was written down
             db = connect()
             db.execute(
-                "INSERT INTO badge (id, colour, image, title, text, text_ru, text_uk,"
-                " button) VALUES (?,?,?,?,?,?,?,?)"
+                "INSERT INTO badge (id, colour, image, title, title_ru, title_uk,"
+                " text, text_ru, text_uk, button) VALUES (?,?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(id) DO UPDATE SET colour=excluded.colour,"
-                " image=excluded.image, text=excluded.text, text_ru=excluded.text_ru,"
+                " image=excluded.image, title=excluded.title,"
+                " title_ru=excluded.title_ru, title_uk=excluded.title_uk,"
+                " text=excluded.text, text_ru=excluded.text_ru,"
                 " text_uk=excluded.text_uk",
-                (which, (said.get("colour") or "").strip().lstrip("#"),
-                 (said.get("image") or "").strip(), "MargyT",
-                 said.get("text", ""), said.get("text_ru", ""),
-                 said.get("text_uk", ""), "Got it"))
+                (which, field("colour").lstrip("#"), picture,
+                 field("title") or which, field("title_ru"), field("title_uk"),
+                 field("text"), field("text_ru"), field("text_uk"), "Got it"))
             db.commit()
             db.close()
             self.go("/admin?said=значок %s готов" % which)
@@ -728,6 +944,31 @@ class Handler(BaseHTTPRequestHandler):
             db.commit()
             db.close()
             self.go("/admin/badge?id=%s" % said.get("id", ""))
+            return
+
+        if path == "/admin/banner/drop":
+            said = self.form()
+            uid = said.get("uid", "")
+            if sane(uid):
+                file = banner_of(uid)
+                if file:
+                    os.remove(file)
+                db = connect()
+                db.execute("DELETE FROM banner WHERE uid = ?", (uid,))
+                db.commit()
+                db.close()
+            self.go("/admin?said=баннер снят")
+            return
+
+        if path == "/admin/gradient/drop":
+            said = self.form()
+            uid = said.get("uid", "")
+            if sane(uid):
+                db = connect()
+                db.execute("DELETE FROM gradient WHERE uid = ?", (uid,))
+                db.commit()
+                db.close()
+            self.go("/admin?said=градиент снят")
             return
 
         if path == "/admin/plugin/drop":
@@ -826,17 +1067,61 @@ class Handler(BaseHTTPRequestHandler):
             self.push(blob)
             return
 
+        if path.startswith("/banner/"):
+            uid = os.path.basename(path[len("/banner/"):]).split(".")[0]
+            file = banner_of(uid) if sane(uid) else None
+            if not file:
+                self.answer(404, {"error": "no banner"})
+                return
+            kind = "image/png" if file.endswith(".png") else (
+                "image/webp" if file.endswith(".webp") else "image/jpeg")
+            with open(file, "rb") as handle:
+                blob = handle.read()
+            self.send_response(200)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", str(len(blob)))
+            self.send_header("Cache-Control", "public, max-age=300")
+            self.end_headers()
+            self.push(blob)
+            return
+
         if path == "/health":
             self.answer(200, {"ok": True})
             return
 
         self.answer(404, {"error": "no such thing"})
 
+    def take_banner(self):
+        """A picture, sent as itself.
+
+        Who it belongs to travels in the query and the picture is the whole
+        body: multipart would mean parsing megabytes to find the one part that
+        matters, and there is only ever one part.
+        """
+        said = parse_qs(urlparse(self.path).query)
+        uid = (said.get("uid") or [""])[0]
+        token = (said.get("token") or [""])[0]
+        kind = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length > BANNER_MOST:
+            self.answer(413, {"error": "5 MB at most"})
+            return
+        blob = self.rfile.read(length) if length else b""
+        code, out = banner(uid, token, kind, blob, self.who())
+        self.answer(code, out)
+
     def do_POST(self):
         path = urlparse(self.path).path
         if path.startswith("/admin"):
             self.panel_post(path)
             return
+        if path == "/banner":
+            self.take_banner()
+            return
+
         try:
             length = int(self.headers.get("Content-Length") or 0)
             if length > 8192:
@@ -856,6 +1141,8 @@ class Handler(BaseHTTPRequestHandler):
             code, out = profile(body, ip)
         elif path == "/old":
             code, out = free(body, ip)
+        elif path == "/gradient":
+            code, out = gradient(body, ip)
         else:
             code, out = 404, {"error": "no such thing"}
         self.answer(code, out)

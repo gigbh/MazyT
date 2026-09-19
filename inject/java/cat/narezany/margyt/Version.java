@@ -7,11 +7,17 @@ package cat.narezany.margyt;
  * was built from calls itself. The first is compared against the
  * repository to know whether there is an update; the second is there
  * so a person reporting something can say which TikTok it happened on.
+ *
+ * TEST marks a build made for the people who paid for the work: it
+ * carries their account id faintly on screen and opens the mod's
+ * settings only for them. A release build has it false and none of
+ * that code ever runs.
  */
 final class Version {
 
     private Version() {}
 
-    static final String MOD = "0.22";
+    static final String MOD = "0.23";
     static final String TIKTOK = "46.9.42";
+    static final boolean TEST = false;
 }

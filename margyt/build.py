@@ -62,7 +62,7 @@ def _java_name(owner: str) -> str:
 class Build:
     def __init__(self, apk_path: str, out_path: str, root: str, tools: Toolchain,
                  workspace: str, keystore: Optional[str] = None,
-                 accent: Optional[int] = None):
+                 accent: Optional[int] = None, test: bool = False):
         self.apk_path = apk_path
         self.out_path = out_path
         self.root = root
@@ -70,6 +70,7 @@ class Build:
         self.workspace = workspace
         self.keystore = keystore
         self.accent = dexpatch.TIKTOK_PINK if accent is None else accent
+        self.test = test
         self.started = time.time()
 
     def say(self, message: str) -> None:
@@ -112,7 +113,7 @@ class Build:
         self.write_baked_colour(moved)
         self.write_emblem()
         self.write_icons()
-        self.write_version(manifest_module.version_name(manifest))
+        self.write_version(manifest_module.version_name(manifest), self.test)
         self.find_anchors(apk)
         self.write_theme(arsc)
         self.write_shots(manifest)
@@ -325,7 +326,7 @@ class Build:
             )
         self.detail("%d icons in the code" % len(names))
 
-    def write_version(self, tiktok: str) -> None:
+    def write_version(self, tiktok: str, test: bool = False) -> None:
         """Both versions, so the app can say what it is and what it patched."""
         path = os.path.join(self.root, "VERSION")
         with open(path, encoding="utf-8") as handle:
@@ -343,14 +344,21 @@ class Build:
                 " * was built from calls itself. The first is compared against the\n"
                 " * repository to know whether there is an update; the second is there\n"
                 " * so a person reporting something can say which TikTok it happened on.\n"
+                " *\n"
+                " * TEST marks a build made for the people who paid for the work: it\n"
+                " * carries their account id faintly on screen and opens the mod's\n"
+                " * settings only for them. A release build has it false and none of\n"
+                " * that code ever runs.\n"
                 " */\n"
                 "final class Version {\n\n"
                 "    private Version() {}\n\n"
                 "    static final String MOD = \"%s\";\n"
                 "    static final String TIKTOK = \"%s\";\n"
-                "}\n" % (mod, tiktok)
+                "    static final boolean TEST = %s;\n"
+                "}\n" % (mod, tiktok, "true" if test else "false")
             )
-        self.detail("MargyT %s on TikTok %s" % (mod, tiktok))
+        self.detail("MargyT %s on TikTok %s%s"
+                    % (mod, tiktok, ", a test build" if test else ""))
 
     def write_theme(self, arsc: Arsc) -> None:
         """The colours TikTok repaints when its own theme changes."""

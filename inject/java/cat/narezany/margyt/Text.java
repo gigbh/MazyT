@@ -25,6 +25,20 @@ final class Text {
 
     static final String COUNTRY = pick("Страна", "Країна", "Country");
 
+    static final String REGION_NOT_AT_LOGIN = pick(
+            "Не менять при входе", "Не змінювати при вході", "Leave it alone at sign-in");
+
+    static final String REGION_NOT_AT_LOGIN_NOTE = pick(
+            "На экране входа регион не подменяется. TikTok проверяет устройство "
+                    + "там строже всего, и из-за подмены вход иногда отвечает "
+                    + "«слишком много попыток».",
+            "На екрані входу регіон не підмінюється. TikTok перевіряє пристрій "
+                    + "там найсуворіше, і через підміну вхід інколи відповідає "
+                    + "«забагато спроб».",
+            "The region is left alone on the sign-in screen. TikTok checks the "
+                    + "device hardest there, and the swap is what turns a first "
+                    + "sign-in into \"too many attempts\".");
+
     static final String ACCENT = pick("Цвет TikTok", "Колір TikTok", "TikTok's colour");
 
     static final String ACCENT_COLOUR = pick("Акцент", "Акцент", "Accent");
@@ -148,6 +162,62 @@ final class Text {
 
     static final String FONT = pick("Шрифт", "Шрифт", "Typeface");
 
+    // ----------------------------------------------------- the test builds
+
+    static final String TEST_NOBODY = pick("не вошёл", "не увійшов", "not signed in");
+
+    static final String TEST_TITLE = pick(
+            "Тестовая сборка", "Тестова збірка", "A test build");
+
+    static final String TEST_TEXT = pick(
+            "Это тестовая сборка MargyT — она только для тех, кто поддержал "
+                    + "разработку. Настройки мода откроются на аккаунте со значком "
+                    + "поддержавшего; TikTok работает как обычно. Если значка нет, "
+                    + "поставьте обычную версию с GitHub.",
+            "Це тестова збірка MargyT — вона лише для тих, хто підтримав "
+                    + "розробку. Налаштування мода відкриються на акаунті зі значком "
+                    + "того, хто підтримав; TikTok працює як завжди. Якщо значка "
+                    + "немає, встановіть звичайну версію з GitHub.",
+            "This is a test build of MargyT, and it is for the people who paid "
+                    + "for the work. The mod's settings open on an account with the "
+                    + "supporter badge; TikTok itself works as usual. Without the "
+                    + "badge, install the ordinary version from GitHub.");
+
+    static final String TEST_CLOSE = pick("Понятно", "Зрозуміло", "I see");
+
+    static final String NO_HDR = pick(
+            "Убрать HDR", "Прибрати HDR", "Take the HDR off");
+
+    static final String NO_HDR_NOTE = pick(
+            "HDR-видео светят ярче всего остального и бьют по глазам ночью. "
+                    + "Видео останется, лишняя яркость — нет.",
+            "HDR-відео світять яскравіше за все інше й б'ють по очах уночі. "
+                    + "Відео залишиться, зайва яскравість — ні.",
+            "An HDR video is allowed more brightness than everything else, which "
+                    + "at night is a lot. The video stays; the extra brightness does not.");
+
+    static final String NO_HDR_OLD = pick(
+            "На этом Android можно только попросить — получится не везде",
+            "На цьому Android можна лише попросити — вийде не всюди",
+            "On this Android it can only be asked for, and not every phone listens");
+
+    static final String FPS = pick("Частота кадров", "Частота кадрів", "Frame rate");
+
+    static final String FPS_ABOUT = pick(
+            "TikTok сам решает, сколько кадров показывать: где-то 60, где-то 120.",
+            "TikTok сам вирішує, скільки кадрів показувати: десь 60, десь 120.",
+            "TikTok decides how many frames to show: 60 here, 120 there.");
+
+    static final String FPS_AUTO = pick(
+            "Пусть решает TikTok", "Хай вирішує TikTok", "Let TikTok decide");
+
+    static final String FPS_LOCKED = pick("Всегда %s", "Завжди %s", "Always %s");
+
+    static final String FPS_UNSUPPORTED = pick(
+            "Экран столько не умеет — будет ближайшая",
+            "Екран стільки не вміє — буде найближча",
+            "The screen cannot do that -- the nearest one instead");
+
     static final String FONT_SYSTEM = pick("Системный", "Системний", "The system one");
     static final String FONT_SANS = pick("Обычный", "Звичайний", "Sans");
     static final String FONT_SANS_LIGHT = pick("Тонкий", "Тонкий", "Light");
@@ -204,23 +274,19 @@ final class Text {
             "Значок за поддержку", "Значок за підтримку", "A badge for supporting");
 
     static final String DONATE_BANNER_TEXT = pick(
-            "Пожертвование от 250 ₽ даёт персональный значок рядом с ником — "
-                    + "его видят все, у кого установлен MargyT — и доступ в "
-                    + "закрытый чат для поддержавших.",
-            "Пожертва від 250 ₽ дає персональний значок поруч із ніком — його "
-                    + "бачать усі, у кого встановлено MargyT — і доступ до "
-                    + "закритого чату для тих, хто підтримав.",
-            "A donation of 250 roubles or more comes with a personal badge beside "
-                    + "your name, visible to everyone running MargyT, and the chat "
-                    + "that is only for people who have.");
+            "От 250 ₽: значок рядом с ником, градиент на ник, баннер в профиле "
+                    + "и закрытый чат. Значок, градиент и баннер видят все с MargyT.",
+            "Від 250 ₽: значок поруч із ніком, градієнт на нік, банер у профілі "
+                    + "та закритий чат. Значок, градієнт і банер бачать усі з MargyT.",
+            "From 250 roubles: a badge beside your name, a gradient on the name, "
+                    + "a banner on your profile and the private chat. The badge, "
+                    + "the gradient and the banner are seen by everyone on MargyT.");
 
     static final String DONATE_BANNER_HOW = pick(
-            "После перевода напишите @narezany в Telegram или TikTok и приложите "
-                    + "свой ID аккаунта вместе с чеком или скриншотом перевода.",
-            "Після переказу напишіть @narezany в Telegram або TikTok і додайте "
-                    + "свій ID акаунта разом із чеком або скріншотом переказу.",
-            "Once it has gone through, write to @narezany on Telegram or TikTok "
-                    + "with your account ID and the receipt.");
+            "После перевода — @narezany в Telegram: чек и ваш ID аккаунта.",
+            "Після переказу — @narezany в Telegram: чек і ваш ID акаунта.",
+            "After paying, write to @narezany on Telegram with the receipt and "
+                    + "your account ID.");
 
     static final String DONATE_BANNER_BUTTON = pick(
             "Пожертвовать", "Пожертвувати", "Donate");
@@ -232,12 +298,12 @@ final class Text {
             "Нравится MargyT?", "Подобається MargyT?", "Enjoying MargyT?");
 
     static final String REMIND_TEXT = pick(
-            "Поддержи разработку — получишь свой значок рядом с ником и доступ "
-                    + "в закрытый чат для поддержавших.",
-            "Підтримай розробку — отримаєш свій значок поруч із ніком і доступ "
-                    + "до закритого чату для тих, хто підтримав.",
-            "Support the making of it: a badge of your own beside your name, and "
-                    + "the chat that is only for people who have.");
+            "Поддержи разработку — значок рядом с ником, градиент на ник, "
+                    + "баннер в профиле и закрытый чат.",
+            "Підтримай розробку — значок поруч із ніком, градієнт на нік, "
+                    + "банер у профілі та закритий чат.",
+            "Support the making of it: a badge beside your name, a gradient on "
+                    + "the name, a banner on your profile and the private chat.");
 
     static final String REMIND_MORE = pick("Подробнее", "Докладніше", "Tell me more");
 

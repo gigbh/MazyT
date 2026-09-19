@@ -171,8 +171,16 @@ public final class Margy {
         return row(iso());
     }
 
-    /** True when the mod should be answering for the device at all. */
+    /**
+     * True when the mod should be answering for the device at all.
+     *
+     * Paused while a sign-in screen is up. TikTok checks harder there than
+     * anywhere else, and a device whose story changes between the feed and
+     * the login form is exactly what it is checking for -- which is how a
+     * perfectly ordinary person ends up told they have made too many
+     * attempts on their first one.
+     */
     public static boolean active() {
-        return context() != null && isEnabled();
+        return context() != null && isEnabled() && !Region.paused();
     }
 }

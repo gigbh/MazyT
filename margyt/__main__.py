@@ -37,6 +37,10 @@ def main(argv=None) -> int:
                         help="scratch space for the dex files being rewritten")
     parser.add_argument("--tools", default=os.path.join(ROOT, "tools"),
                         help="where the downloaded tools are kept")
+    parser.add_argument("--test", action="store_true",
+                        help="a build for the people who paid for it: their account id "
+                             "faintly on screen, and the mod's settings closed to "
+                             "anyone without the supporter badge")
     parser.add_argument("--keystore", help="sign with this keystore instead of a debug key")
     parser.add_argument("--accent", metavar="RRGGBB",
                         help="bake this colour in where TikTok's pink is a picture rather "
@@ -65,7 +69,8 @@ def main(argv=None) -> int:
             parser.error("--accent wants six hex digits, like 8DD1B0")
 
     tools = Toolchain(args.tools)
-    build = Build(args.apk, args.out, ROOT, tools, args.work, args.keystore, accent)
+    build = Build(args.apk, args.out, ROOT, tools, args.work, args.keystore, accent,
+                  test=args.test)
     try:
         build.run()
     except Exception as error:  # a build failure is a message, not a traceback

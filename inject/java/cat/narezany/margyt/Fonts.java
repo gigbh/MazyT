@@ -261,7 +261,7 @@ public final class Fonts {
     private static Typeface hybrid(Context context, String letters, File pack,
                                    String asset) {
         try {
-            File base = FILE.equals(letters) ? file(context) : systemFont();
+            File base = FILE.equals(letters) ? file(context) : systemFont(letters);
             if (base == null || !base.isFile()) return null;
 
             android.graphics.fonts.FontFamily letterFamily =
@@ -283,18 +283,70 @@ public final class Fonts {
         }
     }
 
-    /** A plain font file the phone already has, to build the letters from. */
-    private static File systemFont() {
-        String[] candidates = {
-                "/system/fonts/Roboto-Regular.ttf",
-                "/system/fonts/NotoSans-Regular.ttf",
-                "/system/fonts/DroidSans.ttf",
-        };
-        for (String path : candidates) {
+    /**
+     * The file behind one of the phone's own font families.
+     *
+     * A family name is enough for `Typeface.create`, but not for building a
+     * typeface out of two families: that wants a file. Without this every
+     * preset -- the monospace, the serif, the cursive -- came out as plain
+     * Roboto the moment an emoji pack was on, which is to say the choice was
+     * quietly thrown away.
+     *
+     * The files are the ones Android has shipped under these names for years.
+     * A phone that keeps them somewhere else falls through to whatever plain
+     * font it does have, which is better than nothing at all.
+     */
+    private static File systemFont(String family) {
+        for (String path : filesFor(family)) {
+            File file = new File(path);
+            if (file.isFile()) return file;
+        }
+        for (String path : filesFor(SANS)) {
             File file = new File(path);
             if (file.isFile()) return file;
         }
         return null;
+    }
+
+    private static String[] filesFor(String family) {
+        if (MONOSPACE.equals(family)) {
+            return new String[]{
+                    "/system/fonts/DroidSansMono.ttf",
+                    "/system/fonts/RobotoMono-Regular.ttf",
+                    "/system/fonts/CutiveMono.ttf",
+            };
+        }
+        if (SERIF.equals(family)) {
+            return new String[]{
+                    "/system/fonts/NotoSerif-Regular.ttf",
+                    "/system/fonts/Tinos-Regular.ttf",
+                    "/system/fonts/DroidSerif-Regular.ttf",
+            };
+        }
+        if (CURSIVE.equals(family)) {
+            return new String[]{
+                    "/system/fonts/DancingScript-Regular.ttf",
+                    "/system/fonts/NotoSerif-Italic.ttf",
+                    "/system/fonts/Roboto-Italic.ttf",
+            };
+        }
+        if (SANS_LIGHT.equals(family)) {
+            return new String[]{
+                    "/system/fonts/Roboto-Light.ttf",
+                    "/system/fonts/NotoSans-Light.ttf",
+            };
+        }
+        if (SANS_CONDENSED.equals(family)) {
+            return new String[]{
+                    "/system/fonts/RobotoCondensed-Regular.ttf",
+                    "/system/fonts/NotoSansCondensed-Regular.ttf",
+            };
+        }
+        return new String[]{
+                "/system/fonts/Roboto-Regular.ttf",
+                "/system/fonts/NotoSans-Regular.ttf",
+                "/system/fonts/DroidSans.ttf",
+        };
     }
 
     /**

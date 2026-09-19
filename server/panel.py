@@ -97,6 +97,10 @@ button, .button { display:inline-block; padding:10px 16px; border-radius:11px;
 .row > * { flex:1; min-width: 140px; }
 .row > .narrow { flex:0 0 auto; }
 .dim { color: var(--dim); font-size: 13px; }
+.wide { width:140px; height:48px; object-fit:cover; border-radius:10px;
+        vertical-align:middle; background:#1b1b1f }
+.bar { display:inline-block; width:96px; height:14px; border-radius:7px;
+       vertical-align:middle }
 .dot { width:26px; height:26px; border-radius:7px; vertical-align:middle;
        margin-right:8px; object-fit: contain; }
 .said { background:#1f2d27; border:1px solid #2f4a3f; padding:10px 14px;
@@ -125,7 +129,22 @@ def sign_in_page(trouble=""):
         </form>""", trouble)
 
 
-def main_page(badges, plugins, said=""):
+def when(stamp):
+    """A time, in the only form anyone reads it in: how long ago."""
+    try:
+        gone = int(time.time()) - int(stamp or 0)
+    except Exception:
+        return "-"
+    if gone < 90:
+        return "только что"
+    if gone < 3600:
+        return "%d мин назад" % (gone // 60)
+    if gone < 86400:
+        return "%d ч назад" % (gone // 3600)
+    return "%d дн назад" % (gone // 86400)
+
+
+def main_page(badges, plugins, banners=(), gradients=(), said=""):
     rows = []
     for badge in badges:
         rows.append(
@@ -148,9 +167,33 @@ def main_page(badges, plugins, said=""):
                html.escape(one["version"]), html.escape(one["author"]),
                html.escape(one["tiktok"] or "любая"), html.escape(one["id"])))
 
+    shown = []
+    for one in banners:
+        shown.append(
+            "<tr><td><img class=wide src='/banner/%s?v=%s'></td>"
+            "<td class=dim>%s</td><td class=dim>%s</td>"
+            "<td><form method=post action='/admin/banner/drop' style='display:inline'>"
+            "<input type=hidden name=uid value='%s'>"
+            "<button class=quiet>Снять</button></form></td></tr>"
+            % (html.escape(one["uid"]), html.escape(one["version"]),
+               html.escape(one["uid"]), when(one["changed"]),
+               html.escape(one["uid"])))
+
+    painted = []
+    for one in gradients:
+        strip = ", ".join("#" + html.escape(c) for c in one["colours"])
+        painted.append(
+            "<tr><td class=dim>%s</td>"
+            "<td><span class=bar style=\"background:linear-gradient(90deg,%s)\">"
+            "</span> <span class=dim>%s</span></td>"
+            "<td><form method=post action='/admin/gradient/drop' style='display:inline'>"
+            "<input type=hidden name=uid value='%s'>"
+            "<button class=quiet>Снять</button></form></td></tr>"
+            % (html.escape(one["uid"]), strip, strip, html.escape(one["uid"])))
+
     return page("MargyT", """
         <h1>MargyT</h1>
-        <p class=dim>Значки и плагины</p>
+        <p class=dim>Значки, плагины, баннеры и градиенты</p>
 
         <h2>Значки</h2>
         <div class=card><table>
@@ -167,6 +210,11 @@ def main_page(badges, plugins, said=""):
           </div>
           <label>картинка — png, прозрачный фон; пусто оставит ноту</label>
           <input type=file name=picture accept="image/png,image/webp">
+          <div class=row>
+            <div><label>название</label><input name=title placeholder="Поддержал"></div>
+            <div><label>название (ru)</label><input name=title_ru></div>
+            <div><label>название (uk)</label><input name=title_uk></div>
+          </div>
           <label>текст</label><input name=text placeholder="поддержал разработку MargyT">
           <div class=row>
             <div><label>текст (ru)</label><input name=text_ru></div>
@@ -174,6 +222,18 @@ def main_page(badges, plugins, said=""):
           </div>
           <p><button>Создать</button></p>
         </form>
+
+        <h2>Баннеры профилей</h2>
+        <div class=card><table>
+          <tr><th></th><th>айди</th><th>когда</th><th></th></tr>
+          %s
+        </table></div>
+
+        <h2>Градиенты ников</h2>
+        <div class=card><table>
+          <tr><th>айди</th><th>цвета</th><th></th></tr>
+          %s
+        </table></div>
 
         <h2>Плагины</h2>
         <div class=card><table>
@@ -191,6 +251,8 @@ def main_page(badges, plugins, said=""):
 
         <p><a class='button quiet' href="/admin/out">Выйти</a></p>
         """ % ("".join(rows) or "<tr><td class=dim>пока пусто</td></tr>",
+               "".join(shown) or "<tr><td class=dim>пока пусто</td></tr>",
+               "".join(painted) or "<tr><td class=dim>пока пусто</td></tr>",
                "".join(packs) or "<tr><td class=dim>пока пусто</td></tr>"), said)
 
 

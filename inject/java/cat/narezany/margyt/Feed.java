@@ -124,9 +124,39 @@ public final class Feed {
      * keeps this out of the way of everything that reads a feed and is not
      * looking for advertisements.
      */
+    /**
+     * The same page, read as a field rather than asked for.
+     *
+     * Code written beside a model reaches into it directly, and a page read
+     * that way never went past the getter -- so advertisements dropped from
+     * one path stayed in the other.
+     *
+     * The field is read by reflection rather than by calling `getItems()`,
+     * and that is not squeamishness: the getter reads this same field, that
+     * read is rewritten to come here, and asking the getter from here would
+     * be asking it to ask us. Reflection is the one way in that no rewrite
+     * follows.
+     */
+    public static List items(FeedItemList page) {
+        if (page == null) return null;
+        List raw = null;
+        try {
+            java.lang.reflect.Field field = page.getClass().getDeclaredField("items");
+            field.setAccessible(true);
+            raw = (List) field.get(page);
+        } catch (Throwable ignored) {
+        }
+        if (raw == null) return null;
+        return without(raw);
+    }
+
     public static List getItems(FeedItemList page) {
         if (page == null) return null;
-        List items = page.getItems();
+        return without(page.getItems());
+    }
+
+    /** A page of posts without the ones nobody asked to see. */
+    private static List without(List items) {
         if (items == null) return items;
         if (!isEnabled() && !hides(KEY_LIVE) && !hides(KEY_PHOTOS)) {
             return Plugins.feed(items);
@@ -136,7 +166,7 @@ public final class Feed {
             for (Object item : items) {
                 if (unwanted(item)) out++;
             }
-            if (out == 0) return items;
+            if (out == 0) return Plugins.feed(items);
 
             List kept = new ArrayList(items.size() - out);
             for (Object item : items) {

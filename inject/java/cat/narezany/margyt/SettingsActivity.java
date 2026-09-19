@@ -93,7 +93,15 @@ public class SettingsActivity extends Activity {
         // the list may still be the one cached before this screen existed, so
         // redraw when the server answers rather than waiting for a tap
         Badges.tell(this::rebuild);
-        Mine.ask(this::rebuild);
+        // a test build is only for the people who paid for it, and whether
+        // this account is one of them is a thing the server knows -- so the
+        // refusal waits for its answer rather than firing on a cold start,
+        // when the list of badges is simply not here yet
+        Mine.ask(() -> {
+            rebuild();
+            if (Tester.on() && !Tester.allowed()) Tester.refuse(this);
+        });
+        if (Tester.on() && Tester.asked() && !Tester.allowed()) Tester.refuse(this);
 
         ScrollView scroll = page = new ScrollView(this);
         scroll.setBackgroundColor(skin.page);
@@ -144,6 +152,10 @@ public class SettingsActivity extends Activity {
         column.addView(section(Text.REGION));
         LinearLayout head = card();
         head.addView(switchRow());
+        head.addView(line());
+        head.addView(toggleRow("lock_open", Text.REGION_NOT_AT_LOGIN,
+                Region.stepsAside(), Region::setStepsAside));
+        head.addView(caption(Text.REGION_NOT_AT_LOGIN_NOTE));
         column.addView(wrap(head));
 
         column.addView(section(Text.COUNTRY));
@@ -256,6 +268,25 @@ public class SettingsActivity extends Activity {
             }));
             video.addView(quiet(Text.DIM_NOTE));
         }
+        video.addView(line());
+        video.addView(toggleRow("brightness_low", Text.NO_HDR, Hdr.isEnabled(), on -> {
+            Hdr.setEnabled(on);
+            markChanged();
+        }));
+        video.addView(caption(Text.NO_HDR_NOTE));
+        if (!Hdr.reachable()) video.addView(quiet(Text.NO_HDR_OLD));
+        video.addView(line());
+        video.addView(quiet(Text.FPS_ABOUT));
+        String fps = Rate.name();
+        for (int i = 0; i < Rate.CHOICES.length; i++) {
+            final String which = Rate.CHOICES[i];
+            if (i > 0) video.addView(line());
+            video.addView(pickRow(fpsName(which), which.equals(fps), null, () -> {
+                Rate.choose(which);
+                rebuild();
+            }));
+        }
+        if (!Rate.reachable(this)) video.addView(quiet(Text.FPS_UNSUPPORTED));
         column.addView(wrap(video));
 
         column.addView(section(Text.HIDDEN));
@@ -661,7 +692,9 @@ public class SettingsActivity extends Activity {
 
             Badges.Badge badge = Badges.byId(one.id);
             row.addView(badgeDot(badge));
-            row.addView(label(badge == null ? one.id : badge.text), grow());
+            // the short name, which is what a badge is called; the long line
+            // is its description and belongs in the popup, not in a list
+            row.addView(label(badge == null ? one.id : named(badge)), grow());
 
             // up and down rather than dragging: a row that can be dragged has
             // to fight the page it is on for the same gesture
@@ -1105,6 +1138,16 @@ public class SettingsActivity extends Activity {
             rebuild();
         });
         return sized(row, 56);
+    }
+
+    private static String named(Badges.Badge badge) {
+        if (badge.title != null && badge.title.length() > 0) return badge.title;
+        return badge.text;
+    }
+
+    private static String fpsName(String which) {
+        if (which == null || which.length() == 0) return Text.FPS_AUTO;
+        return String.format(Text.FPS_LOCKED, which + " FPS");
     }
 
     private static String fontName(String which) {
