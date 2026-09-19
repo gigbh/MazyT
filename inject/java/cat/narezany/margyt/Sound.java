@@ -26,6 +26,23 @@ public final class Sound {
 
     public static final String KEY = "sound_available";
 
+    /**
+     * How often this answered for a track, said once.
+     *
+     * Telling the app a muted track is fine is the whole feature, and on some
+     * videos the sound it then plays is not the sound that was meant to be
+     * there. Somebody reporting odd audio can look here and see whether this
+     * was involved at all.
+     */
+    private static int spoke;
+    private static boolean told;
+
+    private static void counted() {
+        if (told || ++spoke < 50) return;
+        told = true;
+        Diary.note("sound: told the app " + spoke + " muted tracks are fine");
+    }
+
     /** What TikTok's own model calls a sound that is fine. */
     private static final int AVAILABLE = 1;
     private static final int NOT_MUTED = 0;
@@ -67,7 +84,9 @@ public final class Sound {
 
     public static int getMusicStatus(Music music) {
         if (music == null) return 0;
-        return isEnabled() ? AVAILABLE : music.getMusicStatus();
+        if (!isEnabled()) return music.getMusicStatus();
+        if (music.getMusicStatus() != AVAILABLE) counted();
+        return AVAILABLE;
     }
 
     public static boolean isMuteShare(Music music) {

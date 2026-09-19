@@ -96,6 +96,11 @@ public final class Looks {
         return Badges.SERVER + "/banner/" + uid + "?v=" + version;
     }
 
+    /** Which version of somebody's banner is current, for the cache to key on. */
+    public static String bannerVersion(String uid) {
+        return uid == null ? null : banners.get(uid);
+    }
+
     public static boolean hasBanner(String uid) {
         return uid != null && banners.containsKey(uid);
     }

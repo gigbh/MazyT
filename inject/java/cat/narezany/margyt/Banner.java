@@ -147,8 +147,6 @@ public final class Banner {
             }
 
             final Context context = nameView.getContext();
-            Bitmap picture = Badges.picture(context, address);
-            if (picture == null) return;
 
             ImageView view = had;
             if (view == null) {
@@ -160,7 +158,7 @@ public final class Banner {
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         (int) (TALL * context.getResources().getDisplayMetrics().density)));
             }
-            view.setImageBitmap(picture);
+            picture(context, uid, address, view);
         } catch (Throwable error) {
             Diary.note("banner: " + error);
         }
@@ -180,13 +178,72 @@ public final class Banner {
         return null;
     }
 
-    static File cache(Context context, String uid) {
-        return new File(context.getFilesDir(), "margyt/banners/" + uid);
+    private static final java.util.Map<String, Bitmap> kept =
+            new java.util.HashMap<String, Bitmap>();
+
+    /**
+     * The picture itself, from memory, from the cache, or from the server.
+     *
+     * Its own fetch rather than the badges' one: that builds an address under
+     * /icon/, and handing it a whole address gave /icon/http://... and nothing
+     * on screen. Nothing waits here, and the view is filled in whenever the
+     * picture arrives.
+     */
+    private static void picture(final Context context, final String uid,
+                                final String address, final ImageView into) {
+        final String key = uid + "-" + Looks.bannerVersion(uid);
+        Bitmap known;
+        synchronized (kept) {
+            if (kept.containsKey(key)) {
+                known = kept.get(key);
+                if (known != null) into.setImageBitmap(known);
+                return;
+            }
+            kept.put(key, null);
+        }
+
+        final java.lang.ref.WeakReference<ImageView> waiting =
+                new java.lang.ref.WeakReference<ImageView>(into);
+        final File cache = new File(context.getFilesDir(), "margyt/banners/" + key);
+        Net.away("banner: fetch", new Runnable() {
+            @Override
+            public void run() {
+                byte[] blob = Net.read(cache);
+                if (blob == null) {
+                    blob = Net.bytes(address);
+                    if (blob != null) Net.save(cache, blob);
+                }
+                final Bitmap picture = decode(blob);
+                if (picture == null) return;
+                synchronized (kept) {
+                    kept.put(key, picture);
+                }
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(new Runnable() {
+                    @Override
+                    public void run() {
+                        ImageView view = waiting.get();
+                        if (view != null) view.setImageBitmap(picture);
+                    }
+                });
+            }
+        });
     }
 
+    /**
+     * Decoded no larger than a phone screen. A banner may be five megabytes,
+     * and the full size of one is memory nobody needs.
+     */
     static Bitmap decode(byte[] blob) {
+        if (blob == null) return null;
         try {
-            return BitmapFactory.decodeByteArray(blob, 0, blob.length);
+            BitmapFactory.Options measure = new BitmapFactory.Options();
+            measure.inJustDecodeBounds = true;
+            BitmapFactory.decodeByteArray(blob, 0, blob.length, measure);
+            int step = 1;
+            while (measure.outWidth / step > 1600) step *= 2;
+            BitmapFactory.Options real = new BitmapFactory.Options();
+            real.inSampleSize = step;
+            return BitmapFactory.decodeByteArray(blob, 0, blob.length, real);
         } catch (Throwable ignored) {
             return null;
         }
