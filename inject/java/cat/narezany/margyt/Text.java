@@ -243,6 +243,14 @@ final class Text {
             "An unacceptable picture costs you the banner. The second time it costs "
                     + "you the supporter badge.");
 
+    static final String BANNER_SHADE = pick(
+            "Тень под текстом", "Тінь під текстом", "Shadow under the text");
+
+    static final String BANNER_SHADE_NOTE = pick(
+            "Чтобы ник и подписи читались на любой картинке.",
+            "Щоб нік і підписи читалися на будь-якій картинці.",
+            "So the name and the numbers stay readable over any picture.");
+
     static final String BANNER_PICK = pick("Выбрать картинку", "Вибрати картинку", "Choose a picture");
     static final String BANNER_OFF = pick("Убрать баннер", "Прибрати банер", "Take it off");
     static final String BANNER_TOO_BIG = pick(

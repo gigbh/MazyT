@@ -1195,6 +1195,12 @@ public class SettingsActivity extends Activity {
                         rebuild();
                     })));
         }
+        card.addView(line());
+        card.addView(slider(Text.BANNER_SHADE, Banner.shade(), 100, value -> {
+            Banner.setShade(value);
+            markChanged();
+        }));
+        card.addView(quiet(Text.BANNER_SHADE_NOTE));
         card.addView(caption(Text.BANNER_NOTE));
         card.addView(quiet(Text.BANNER_RULES));
         return card;

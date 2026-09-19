@@ -28,6 +28,16 @@ public final class Banner {
 
     private static final int TAG = 0x4D617242;   // "MarB"
 
+    /** Where the shadow strength is kept, and how strong it is by default. */
+    static final String KEY_SHADE = "banner_shade";
+    private static final int SHADE = 55;
+
+    /** Marks a text this put a shadow on, so only those are put back. */
+    private static final int SHADED = 0x4D617243;   // "MarC"
+
+    /** Deep enough for a header, shallow enough to stay cheap. */
+    private static final int DEEP = 6;
+
     private Banner() {}
 
     public interface Said {
@@ -158,6 +168,82 @@ public final class Banner {
         }
     }
 
+    /** How heavy the shadow under text on a banner is, nought to a hundred. */
+    public static int shade() {
+        try {
+            Context context = Margy.context();
+            if (context == null) return SHADE;
+            return context.getSharedPreferences(Margy.PREFS, Context.MODE_PRIVATE)
+                    .getInt(KEY_SHADE, SHADE);
+        } catch (Throwable ignored) {
+            return SHADE;
+        }
+    }
+
+    public static void setShade(int how) {
+        try {
+            Context context = Margy.context();
+            if (context == null) return;
+            context.getSharedPreferences(Margy.PREFS, Context.MODE_PRIVATE)
+                    .edit().putInt(KEY_SHADE, Math.max(0, Math.min(100, how))).apply();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * A shadow under the text standing on the picture.
+     *
+     * A name in white on a white photograph is not readable, and the picture
+     * is whatever somebody uploaded. A shadow under the letters costs nothing
+     * and works against any picture, which a scrim over the whole header does
+     * not.
+     */
+    private static void shade(View view, int depth) {
+        if (view == null || depth > DEEP) return;
+        int how = shade();
+        if (view instanceof android.widget.TextView) {
+            android.widget.TextView text = (android.widget.TextView) view;
+            try {
+                if (how <= 0) {
+                    if (text.getTag(SHADED) != null) {
+                        text.setShadowLayer(0, 0, 0, 0);
+                        text.setTag(SHADED, null);
+                    }
+                } else {
+                    float radius = 1f + how * 0.05f;
+                    int ink = (int) (how * 2.4f) << 24;
+                    text.setShadowLayer(radius, 0, radius * 0.35f, ink);
+                    text.setTag(SHADED, Boolean.TRUE);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            int many = group.getChildCount();
+            for (int i = 0; i < many; i++) shade(group.getChildAt(i), depth + 1);
+        }
+    }
+
+    private static void unshade(View view, int depth) {
+        if (view == null || depth > DEEP) return;
+        if (view instanceof android.widget.TextView) {
+            android.widget.TextView text = (android.widget.TextView) view;
+            if (text.getTag(SHADED) != null) {
+                try {
+                    text.setShadowLayer(0, 0, 0, 0);
+                    text.setTag(SHADED, null);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            int many = group.getChildCount();
+            for (int i = 0; i < many; i++) unshade(group.getChildAt(i), depth + 1);
+        }
+    }
+
     private static void restore(View header) {
         Object had;
         synchronized (before) {
@@ -167,6 +253,7 @@ public final class Banner {
         try {
             header.setBackground((android.graphics.drawable.Drawable) had);
             header.setTag(TAG, null);
+            unshade(header, 0);
         } catch (Throwable ignored) {
         }
     }
@@ -308,9 +395,13 @@ public final class Banner {
     /** Worn once per person, so a recycled header does not keep somebody else's. */
     private static void wear(View header, Bitmap picture, String uid) {
         try {
-            if (uid.equals(header.getTag(TAG))) return;
-            header.setBackground(new Painted(picture));
-            header.setTag(TAG, uid);
+            if (!uid.equals(header.getTag(TAG))) {
+                header.setBackground(new Painted(picture));
+                header.setTag(TAG, uid);
+            }
+            // again on every pass: the header is rebuilt as a profile loads,
+            // and text that arrived after the picture has no shadow yet
+            shade(header, 0);
         } catch (Throwable ignored) {
         }
     }
