@@ -273,6 +273,38 @@ public class SettingsActivity extends Activity {
         if (!Hdr.reachable()) video.addView(quiet(Text.NO_HDR_OLD));
         column.addView(wrap(video));
 
+        column.addView(section(Text.GRADIENT));
+        column.addView(wrap(gradientCard()));
+
+        column.addView(section(Text.TAGS));
+        LinearLayout tags = card();
+        tags.addView(betaRow("tag", Text.TAGS, true, on -> {}));
+        java.util.List<String> blocked = Tags.all();
+        if (blocked.isEmpty()) {
+            tags.addView(caption(Text.TAGS_NONE));
+        } else {
+            for (final String tag : blocked) {
+                tags.addView(line());
+                tags.addView(actionRow("block", "#" + tag, null, () -> {
+                    Tags.remove(tag);
+                    rebuild();
+                }));
+            }
+        }
+        tags.addView(line());
+        tags.addView(actionRow("tag", Text.TAGS_ADD, null, () -> Popup.write(
+                this, Text.TAGS_ADD, "", Text.TAGS_ADD, said -> {
+                    if (!Tags.add(said)) {
+                        Toast.makeText(this, Text.TAGS_FULL, Toast.LENGTH_SHORT).show();
+                    }
+                    rebuild();
+                })));
+        tags.addView(caption(Text.TAGS_NOTE));
+        column.addView(wrap(tags));
+
+        column.addView(section(Text.BANNER));
+        column.addView(wrap(bannerCard()));
+
         column.addView(section(Text.FPS));
         LinearLayout fps = card();
         fps.addView(quiet(Text.FPS_ABOUT));
@@ -282,7 +314,7 @@ public class SettingsActivity extends Activity {
             if (i > 0) fps.addView(line());
             fps.addView(pickRow(fpsName(which), which.equals(rate), null, () -> {
                 Rate.choose(which);
-                rebuild();
+                markChanged();
             }));
         }
         if (!Rate.reachable(this)) fps.addView(quiet(Text.FPS_UNSUPPORTED));
@@ -1144,6 +1176,132 @@ public class SettingsActivity extends Activity {
         return badge.text;
     }
 
+    private static final int PICK_BANNER = 0x4D42;  // "MB"
+
+    private LinearLayout bannerCard() {
+        LinearLayout card = card();
+        if (!Mine.holds(Tester.SUPPORTER)) {
+            card.addView(actionRow("wallpaper", Text.BANNER, null, () -> {}));
+            card.addView(caption(Text.GRADIENT_ONLY));
+            return card;
+        }
+        card.addView(actionRow("wallpaper", Text.BANNER_PICK, null, this::pickBanner));
+        if (Looks.hasBanner(Account.id())) {
+            card.addView(line());
+            card.addView(actionRow("block", Text.BANNER_OFF, null, () -> Banner.drop(
+                    (ok, trouble) -> {
+                        Popup.show(this, Text.BANNER,
+                                ok ? Text.GRADIENT_SAVED : trouble, Text.TEST_CLOSE);
+                        rebuild();
+                    })));
+        }
+        card.addView(caption(Text.BANNER_NOTE));
+        card.addView(quiet(Text.BANNER_RULES));
+        return card;
+    }
+
+    private void pickBanner() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("image/*");
+            startActivityForResult(intent, PICK_BANNER);
+        } catch (Throwable error) {
+            Toast.makeText(this, String.valueOf(error), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    // -------------------------------------------------------- the gradient
+
+    private java.util.List<Integer> gradientColours;
+    private int gradientSlot;
+
+    private LinearLayout gradientCard() {
+        LinearLayout card = card();
+        if (!Mine.holds(Tester.SUPPORTER)) {
+            card.addView(actionRow("gradient", Text.GRADIENT, null, () -> {}));
+            card.addView(caption(Text.GRADIENT_ONLY));
+            return card;
+        }
+        if (gradientColours == null) gradientColours = Gradient.starting();
+        if (gradientSlot >= gradientColours.size()) gradientSlot = 0;
+
+        card.addView(gradientPreview());
+        card.addView(gradientDots());
+
+        int[] hsv = Gradient.hsv(gradientColours.get(gradientSlot));
+        card.addView(slider(Text.GRADIENT_HUE, hsv[0], 359, value -> setSlot(value, -1, -1)));
+        card.addView(slider(Text.GRADIENT_SAT, hsv[1], 100, value -> setSlot(-1, value, -1)));
+        card.addView(slider(Text.GRADIENT_VALUE, hsv[2], 100, value -> setSlot(-1, -1, value)));
+
+        card.addView(line());
+        if (gradientColours.size() < Gradient.MOST) {
+            card.addView(actionRow("palette", Text.GRADIENT_ADD, null, () -> {
+                gradientColours.add(gradientColours.get(gradientColours.size() - 1));
+                gradientSlot = gradientColours.size() - 1;
+                rebuild();
+            }));
+        }
+        if (gradientColours.size() > Gradient.FEWEST) {
+            card.addView(actionRow("block", Text.GRADIENT_DROP_ONE, null, () -> {
+                gradientColours.remove(gradientSlot);
+                gradientSlot = 0;
+                rebuild();
+            }));
+        }
+        card.addView(line());
+        card.addView(actionRow("star", Text.GRADIENT_SAVE, null, () -> Gradient.save(
+                gradientColours, (ok, trouble) -> Popup.show(this, Text.GRADIENT,
+                        ok ? Text.GRADIENT_SAVED : trouble, Text.TEST_CLOSE))));
+        card.addView(actionRow("visibility_off", Text.GRADIENT_OFF, null, () -> Gradient.drop(
+                (ok, trouble) -> Popup.show(this, Text.GRADIENT,
+                        ok ? Text.GRADIENT_SAVED : trouble, Text.TEST_CLOSE))));
+        card.addView(caption(Text.GRADIENT_NOTE));
+        return card;
+    }
+
+    private void setSlot(int hue, int saturation, int value) {
+        int[] hsv = Gradient.hsv(gradientColours.get(gradientSlot));
+        if (hue >= 0) hsv[0] = hue;
+        if (saturation >= 0) hsv[1] = saturation;
+        if (value >= 0) hsv[2] = value;
+        gradientColours.set(gradientSlot, Gradient.from(hsv[0], hsv[1], hsv[2]));
+        rebuild();
+    }
+
+    private View gradientPreview() {
+        int[] colours = new int[gradientColours.size()];
+        for (int i = 0; i < colours.length; i++) colours[i] = gradientColours.get(i);
+        View bar = new View(this);
+        android.graphics.drawable.GradientDrawable paint =
+                new android.graphics.drawable.GradientDrawable(
+                        android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                        colours);
+        paint.setCornerRadius(dp(10));
+        bar.setBackground(paint);
+        LinearLayout holder = new LinearLayout(this);
+        holder.setPadding(dp(16), dp(14), dp(16), dp(6));
+        holder.addView(bar, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(28)));
+        return holder;
+    }
+
+    private View gradientDots() {
+        LinearLayout line = new LinearLayout(this);
+        line.setOrientation(LinearLayout.HORIZONTAL);
+        line.setPadding(dp(16), dp(6), dp(16), dp(10));
+        for (int i = 0; i < gradientColours.size(); i++) {
+            final int at = i;
+            Dot dot = new Dot(this, gradientColours.get(i), i == gradientSlot);
+            dot.setOnClickListener(v -> {
+                gradientSlot = at;
+                rebuild();
+            });
+            line.addView(dot, new LinearLayout.LayoutParams(dp(36), dp(36), 1f));
+        }
+        return line;
+    }
+
     private static String fpsName(String which) {
         if (which == null || which.length() == 0) return Text.FPS_AUTO;
         return String.format(Text.FPS_LOCKED, which + " FPS");
@@ -1752,6 +1910,14 @@ public class SettingsActivity extends Activity {
             if (Textures.install(this, source)) markChanged();
             else Toast.makeText(this, Text.TEXTURES_FAILED, Toast.LENGTH_LONG).show();
             rebuild();
+            return;
+        }
+        if (request == PICK_BANNER) {
+            Banner.send(this, source, (ok, trouble) -> {
+                Popup.show(this, Text.BANNER, ok ? Text.GRADIENT_SAVED : trouble,
+                        Text.TEST_CLOSE);
+                rebuild();
+            });
             return;
         }
         if (request == PICK_FONT || request == PICK_EMOJI) {

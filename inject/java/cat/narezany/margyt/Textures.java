@@ -358,6 +358,35 @@ public final class Textures {
     private static final Map<String, Bitmap> drawn = new HashMap<String, Bitmap>();
 
     /**
+     * Resource number to the path it lives at, remembered.
+     *
+     * Asking the resource table is not free and this is asked on every
+     * picture the app draws. The answer never changes while the app runs.
+     */
+    private static final android.util.SparseArray<String> paths =
+            new android.util.SparseArray<String>();
+
+    private static String pathOf(Context context, int id) {
+        synchronized (paths) {
+            if (paths.indexOfKey(id) >= 0) return paths.get(id);
+        }
+        String path = null;
+        try {
+            TypedValue where = new TypedValue();
+            context.getResources().getValue(id, where, true);
+            if (where.string != null) {
+                String said = where.string.toString();
+                if (said.startsWith("res/")) path = said;
+            }
+        } catch (Throwable ignored) {
+        }
+        synchronized (paths) {
+            paths.put(id, path);
+        }
+        return path;
+    }
+
+    /**
      * The picture a pack has for this resource, or nothing.
      *
      * The number is turned into the path it lives at inside the apk, and that
@@ -370,11 +399,8 @@ public final class Textures {
             ZipFile zip = open(context);
             if (zip == null) return null;
 
-            TypedValue where = new TypedValue();
-            context.getResources().getValue(id, where, true);
-            if (where.string == null) return null;
-            String path = where.string.toString();
-            if (!path.startsWith("res/")) return null;
+            String path = pathOf(context, id);
+            if (path == null) return null;
 
             Bitmap known;
             synchronized (drawn) {

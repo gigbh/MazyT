@@ -78,7 +78,7 @@ public final class Badge {
             // put back.
             String own = Plugins.name(uid, strip(name));
             remember(uid, own, fromProfile);
-            String marks = Badges.marksFor(uid);
+            String marks = Badges.marksFor(uid) + Looks.mark(uid);
             if (marks.length() > 0) return own + '\u2009' + marks;
             return own;
         } catch (Throwable ignored) {
@@ -172,6 +172,7 @@ public final class Badge {
             if (showing != null && name.contentEquals(showing)) {
                 String out = marked(showing.toString(), uid, false);
                 if (!out.equals(showing.toString())) setText(text, out);
+                Banner.show(text, uid);
             }
         }
         if (view instanceof android.view.ViewGroup) {
@@ -263,9 +264,12 @@ public final class Badge {
     private static CharSequence marked(TextView view, CharSequence text) {
         if (text == null) return text;
 
+        Looks.clear(view);
+
         boolean any = false;
         for (int i = text.length() - 1; i >= 0 && !any; i--) {
-            any = Badges.isMark(text.charAt(i));
+            char c = text.charAt(i);
+            any = Badges.isMark(c) || Looks.isMark(c);
         }
         if (!any) return text;
 
@@ -280,8 +284,14 @@ public final class Badge {
             // not yet looked at.
             SpannableStringBuilder out = new SpannableStringBuilder(text);
             boolean drew = false;
+            int[] gradient = null;
             for (int i = out.length() - 1; i >= 0; i--) {
                 char c = out.charAt(i);
+                if (Looks.isMark(c)) {
+                    if (gradient == null) gradient = Looks.colours(c);
+                    out.delete(i, i + 1);
+                    continue;
+                }
                 if (!Badges.isMark(c)) continue;
                 Badges.Badge badge = Badges.byMark(c);
                 Drawable picture = badge == null ? null : picture(view, badge);
@@ -294,6 +304,7 @@ public final class Badge {
                 out.setSpan(new Tap(badge), i, i + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 drew = true;
             }
+            if (gradient != null) Looks.paint(view, gradient);
             if (!drew) return tidy(out.toString());
             listen(view);
             return out;

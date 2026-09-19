@@ -69,13 +69,22 @@ public final class Mine {
         return new ArrayList<Held>(held);
     }
 
+    /** Whether this account holds a badge, shown or hidden. */
+    public static boolean holds(String id) {
+        if (id == null) return false;
+        for (Held one : held) {
+            if (id.equals(one.id)) return true;
+        }
+        return false;
+    }
+
     public static boolean anything() {
         return !held.isEmpty();
     }
 
     // ------------------------------------------------------------- the key
 
-    private static String token() {
+    static String token() {
         SharedPreferences prefs = prefs();
         if (prefs == null) return "";
         String uid = Account.id();

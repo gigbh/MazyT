@@ -135,6 +135,40 @@ public final class Net {
         }
     }
 
+    /** A POST whose body is the thing itself, not json wrapped around it. */
+    public static String send(String url, String kind, byte[] body) {
+        java.net.HttpURLConnection link = null;
+        try {
+            link = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            link.setConnectTimeout(15000);
+            link.setReadTimeout(60000);
+            link.setRequestMethod("POST");
+            link.setDoOutput(true);
+            link.setRequestProperty("Content-Type", kind);
+            link.setRequestProperty("User-Agent", "MargyT");
+            link.setFixedLengthStreamingMode(body.length);
+            java.io.OutputStream out = link.getOutputStream();
+            out.write(body);
+            out.close();
+
+            int code = link.getResponseCode();
+            java.io.InputStream in = code >= 400 ? link.getErrorStream() : link.getInputStream();
+            if (in == null) return null;
+            java.io.ByteArrayOutputStream read = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            int got;
+            while ((got = in.read(buffer)) > 0) read.write(buffer, 0, got);
+            in.close();
+            String said = new String(read.toByteArray(), "UTF-8");
+            return code >= 400 ? null : said;
+        } catch (Throwable error) {
+            Diary.note("net: " + error);
+            return null;
+        } finally {
+            if (link != null) link.disconnect();
+        }
+    }
+
     public static byte[] bytes(String url) {
         HttpURLConnection connection = null;
         try {

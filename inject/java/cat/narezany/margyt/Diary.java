@@ -32,6 +32,21 @@ public final class Diary {
     private static final List<String> LINES = new ArrayList<String>();
     private static boolean loaded;
 
+    /**
+     * Saving is held back, because writing is the expensive half.
+     *
+     * A note is cheap and there are a hundred places that write one. Rebuilding
+     * the whole diary and handing it to the preferences on each of those is
+     * work in the middle of whatever the app was doing.
+     */
+    private static boolean dirty;
+    private static long savedAt;
+    private static final long REST = 3000;
+
+    /** One formatter, because making one costs more than using it. */
+    private static final SimpleDateFormat CLOCK =
+            new SimpleDateFormat("HH:mm:ss", Locale.US);
+
     public static void note(String line) {
         String stamped = stamp() + "  " + line;
         synchronized (LINES) {
@@ -40,13 +55,19 @@ public final class Diary {
             if (last.length() > 10 && last.substring(10).equals(stamped.substring(10))) return;
             LINES.add(stamped);
             while (LINES.size() > KEEP) LINES.remove(0);
-            save();
+            dirty = true;
+            long now = android.os.SystemClock.uptimeMillis();
+            if (now - savedAt >= REST) {
+                savedAt = now;
+                save();
+            }
         }
     }
 
     public static List<String> lines() {
         synchronized (LINES) {
             load();
+            if (dirty) save();
             return new ArrayList<String>(LINES);
         }
     }
@@ -71,6 +92,7 @@ public final class Diary {
     }
 
     private static void save() {
+        dirty = false;
         SharedPreferences prefs = prefs();
         if (prefs == null) return;
         StringBuilder out = new StringBuilder();
@@ -92,6 +114,8 @@ public final class Diary {
     }
 
     private static String stamp() {
-        return new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date());
+        synchronized (CLOCK) {
+            return CLOCK.format(new Date());
+        }
     }
 }

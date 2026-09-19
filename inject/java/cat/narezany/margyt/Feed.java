@@ -114,6 +114,7 @@ public final class Feed {
             if (hides(KEY_LIVE) && isLive(post)) return true;
             if (isLive(post)) return false;   // a room is neither a photo nor a video
             if (hides(KEY_PHOTOS) && isPhotos(post)) return true;
+            if (Tags.blocks(post)) return true;
         } catch (Throwable ignored) {
         }
         return false;
@@ -150,7 +151,8 @@ public final class Feed {
     /** A page of posts without the ones nobody asked to see. */
     private static List without(List items) {
         if (items == null) return items;
-        if (!isEnabled() && !hides(KEY_LIVE) && !hides(KEY_PHOTOS)) {
+        if (!isEnabled() && !hides(KEY_LIVE) && !hides(KEY_PHOTOS)
+                && Tags.all().isEmpty()) {
             return Plugins.feed(items);
         }
         try {

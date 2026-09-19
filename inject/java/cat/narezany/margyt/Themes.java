@@ -287,11 +287,22 @@ public final class Themes {
      * how much of a tree is walked at once.
      */
     public static void repaint(View root) {
+        repaint(root, BUDGET);
+    }
+
+    /**
+     * A screen is walked in full when it appears and less of it afterwards.
+     *
+     * The layout listener fires while anything at all is moving, and a full
+     * walk two or three times a second is work in the middle of a scroll. What
+     * arrives later is a panel or a sheet, which is near the top of the tree.
+     */
+    public static void repaint(View root, int budget) {
         Settled now = settled;
         if (now == null) now = read();
         if (!now.on || root == null) return;
         try {
-            seen = 0;
+            seen = BUDGET - budget;
             walk(root, 0);
         } catch (Throwable ignored) {
         }
@@ -409,7 +420,7 @@ public final class Themes {
                             long now = android.os.SystemClock.uptimeMillis();
                             if (now - last < QUIET) return;
                             last = now;
-                            repaint(root);
+                            repaint(root, AGAIN);
                             Badge.rewrite(root);
                             Dim.apply(activity);
                         }
@@ -424,6 +435,9 @@ public final class Themes {
 
     private static volatile long last;
     private static final long QUIET = 400;
+
+    /** How much of the tree a repeat pass is allowed. */
+    private static final int AGAIN = 1200;
 
 
     // setTag(int, ...) wants a key that looks like a resource id, and every key

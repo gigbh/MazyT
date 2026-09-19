@@ -187,6 +187,73 @@ final class Text {
             "На цьому Android можна лише попросити — вийде не всюди",
             "On this Android it can only be asked for, and not every phone listens");
 
+    // ------------------------------------------------- the gradient and banner
+
+    static final String GRADIENT = pick("Градиент на ник", "Градієнт на нік", "Name gradient");
+
+    static final String GRADIENT_NOTE = pick(
+            "Ник в градиенте видят все, у кого стоит MargyT. Менять можно раз в минуту.",
+            "Нік у градієнті бачать усі, у кого стоїть MargyT. Міняти можна раз на хвилину.",
+            "Everyone running MargyT sees it. Changing is allowed once a minute.");
+
+    static final String GRADIENT_ONLY = pick(
+            "Только для поддержавших разработку",
+            "Лише для тих, хто підтримав розробку",
+            "For the people who supported the project");
+
+    static final String GRADIENT_HUE = pick("Цвет", "Колір", "Hue");
+    static final String GRADIENT_SAT = pick("Насыщенность", "Насиченість", "Saturation");
+    static final String GRADIENT_VALUE = pick("Яркость", "Яскравість", "Brightness");
+
+    static final String GRADIENT_ADD = pick("Добавить цвет", "Додати колір", "Add a colour");
+    static final String GRADIENT_DROP_ONE = pick("Убрать цвет", "Прибрати колір", "Remove a colour");
+    static final String GRADIENT_SAVE = pick("Сохранить градиент", "Зберегти градієнт", "Save it");
+    static final String GRADIENT_OFF = pick("Убрать градиент", "Прибрати градієнт", "Take it off");
+
+    static final String GRADIENT_SAVED = pick("Готово", "Готово", "Done");
+    static final String GRADIENT_REFUSED = pick(
+            "Сервер отказал. Раз в минуту, и только для поддержавших.",
+            "Сервер відмовив. Раз на хвилину, і лише для тих, хто підтримав.",
+            "The server said no. Once a minute, and supporters only.");
+    static final String GRADIENT_NO_ACCOUNT = pick(
+            "Сначала войди в аккаунт", "Спочатку увійди в акаунт", "Sign in first");
+
+    static final String TAGS = pick("Фильтр хештегов", "Фільтр хештегів", "Hashtag filter");
+
+    static final String TAGS_NOTE = pick(
+            "Посты с этими хештегами не попадут в рекомендации. Свои посты не прячутся.",
+            "Пости з цими хештегами не потраплять у рекомендації. Свої пости не ховаються.",
+            "Posts with these hashtags stay out of the feed. Your own are never hidden.");
+
+    static final String TAGS_ADD = pick("Добавить хештег", "Додати хештег", "Add a hashtag");
+    static final String TAGS_NONE = pick("Пока пусто", "Поки порожньо", "None yet");
+    static final String TAGS_FULL = pick("Больше не влезет", "Більше не влізе", "That is enough of those");
+
+    static final String BANNER = pick("Баннер профиля", "Банер профілю", "Profile banner");
+
+    static final String BANNER_NOTE = pick(
+            "Картинка сверху профиля, её видят все с MargyT. До 5 МБ, менять раз в пять минут.",
+            "Картинка зверху профілю, її бачать усі з MargyT. До 5 МБ, міняти раз на п'ять хвилин.",
+            "A picture across the top of your profile, seen by everyone on MargyT. "
+                    + "5 MB at most, changed once every five minutes.");
+
+    static final String BANNER_RULES = pick(
+            "За неприемлемую картинку баннер снимается. Во второй раз снимается значок поддержавшего.",
+            "За неприйнятну картинку банер знімається. Удруге знімається значок того, хто підтримав.",
+            "An unacceptable picture costs you the banner. The second time it costs "
+                    + "you the supporter badge.");
+
+    static final String BANNER_PICK = pick("Выбрать картинку", "Вибрати картинку", "Choose a picture");
+    static final String BANNER_OFF = pick("Убрать баннер", "Прибрати банер", "Take it off");
+    static final String BANNER_TOO_BIG = pick(
+            "Больше 5 МБ", "Більше 5 МБ", "Over 5 MB");
+    static final String BANNER_UNREADABLE = pick(
+            "Не смог прочитать файл", "Не зміг прочитати файл", "Could not read that file");
+    static final String BANNER_REFUSED = pick(
+            "Сервер отказал. Раз в пять минут, и только для поддержавших.",
+            "Сервер відмовив. Раз на п'ять хвилин, і лише для тих, хто підтримав.",
+            "The server said no. Once every five minutes, and supporters only.");
+
     static final String FPS = pick("Частота кадров", "Частота кадрів", "Frame rate");
 
     static final String FPS_ABOUT = pick(

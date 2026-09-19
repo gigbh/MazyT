@@ -139,9 +139,15 @@ public static final String KEY = "badges_on";
     private static final int MOST = 64;
 
     private static char pick() {
-        // U+E000..U+F8FF is the private-use area; leave room for the whole run
-        int room = 0xF8FF - 0xE000 - MOST;
+        // U+E000..U+F8FF is the private-use area. Room for the badges and for
+        // the gradients, which take the block straight after.
+        int room = 0xF8FF - 0xE000 - MOST - Looks.MOST;
         return (char) (0xE000 + (int) (Math.random() * room));
+    }
+
+    /** Where the gradient marks begin, next door to the badges. */
+    static char looksFirst() {
+        return (char) (FIRST + MOST);
     }
 
     /** Anything in the private-use area, ours or not. Names are cleared of it. */
@@ -246,6 +252,12 @@ public static final String KEY = "badges_on";
     /** What the server said last time, so it need not say it again. */
     private static volatile String tag;
 
+    /** Ask the server again now, after something of ours changed there. */
+    static void refresh() {
+        Context context = Margy.context();
+        if (context != null) refresh(context);
+    }
+
     private static void refresh(final Context context) {
         Net.away("badges", new Runnable() {
             @Override
@@ -333,6 +345,8 @@ public static final String KEY = "badges_on";
                 serverNow = now;
                 readAt = android.os.SystemClock.elapsedRealtime();
             }
+
+            Looks.learn(root);
 
             Map<String, java.util.List<Badge>> built =
                     new HashMap<String, java.util.List<Badge>>();
