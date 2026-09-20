@@ -268,6 +268,27 @@ final class Text {
     static final String PROVE_CHECKING = pick(
             "Смотрю твою страницу…", "Дивлюсь твою сторінку…", "Reading your page...");
 
+    static final String PROVE_NEED_NAME = pick(
+            "Не могу найти твою страницу по айди. Впиши свой ник и жми ещё раз.",
+            "Не можу знайти твою сторінку за айді. Впиши свій нік і тисни ще раз.",
+            "Your page cannot be found from the id. Write your name and press again.");
+
+    static final String PROVE_NAME = pick("твой ник без @", "твій нік без @",
+            "your name without the @");
+
+    static final String PROVE_NOT_YOURS = pick(
+            "Этот код просили не с этого телефона. Открой карточку заново.",
+            "Цей код просили не з цього телефона. Відкрий картку заново.",
+            "This code was asked for by another phone. Open the card again.");
+
+    static final String PROVE_HIDDEN = pick(
+            "Если TikTok прячет описание от других, впиши код в имя профиля: "
+                    + "оно обновляется сразу.",
+            "Якщо TikTok ховає опис від інших, впиши код в ім'я профілю: "
+                    + "воно оновлюється одразу.",
+            "If TikTok is holding your bio back, put the code in your profile "
+                    + "name instead: that shows up at once.");
+
     static final String PROVE_CHECK = pick("Проверить", "Перевірити", "Check");
 
     static final String PROVE_OK = pick(
@@ -309,6 +330,41 @@ final class Text {
     static final String PROVE_FAILED = pick(
             "Не вышло", "Не вийшло", "That did not work");
 
+    // ----------------------------------------------- fixes without an apk
+
+    static final String PATCH = pick("Заплатки", "Латки", "Patches");
+
+    static final String PATCH_NOTE = pick(
+            "Мелкие починки приезжают сами, без переустановки мода. "
+                    + "Применяются после перезапуска тиктока.",
+            "Дрібні полагодження приїжджають самі, без перевстановлення мода. "
+                    + "Застосовуються після перезапуску тіктоку.",
+            "Small fixes arrive on their own, without reinstalling the mod. "
+                    + "They apply after TikTok restarts.");
+
+    static final String PATCH_ON = pick("Ставить заплатки", "Ставити латки",
+            "Take patches");
+
+    static final String PATCH_CHECK = pick("Проверить заплатки", "Перевірити латки",
+            "Look for a patch");
+
+    static final String PATCH_NONE = pick("Всё и так свежее", "Усе й так свіже",
+            "Nothing new");
+
+    static final String PATCH_GOT = pick(
+            "Заплатка скачана, применится после перезапуска",
+            "Латку завантажено, застосується після перезапуску",
+            "The patch is here, it applies after a restart");
+
+    static final String PATCH_REFUSED = pick(
+            "Заплатка не подошла", "Латка не підійшла", "That patch was refused");
+
+    static final String PATCH_RUNNING = pick("Стоит заплатка", "Стоїть латка",
+            "A patch is running");
+
+    static final String PATCH_DROP = pick("Снять заплатку", "Зняти латку",
+            "Take the patch off");
+
     static final String TAGS = pick("Фильтр хештегов", "Фільтр хештегів", "Hashtag filter");
 
     static final String TAGS_NOTE = pick(
@@ -335,12 +391,15 @@ final class Text {
                     + "you the supporter badge.");
 
     static final String BANNER_DIM = pick(
-            "Затемнение баннера", "Затемнення банера", "Darken the banner");
+            "Приглушение баннера", "Приглушення банера", "Mute the banner");
 
     static final String BANNER_DIM_NOTE = pick(
-            "Так его увидят все. Хранится вместе с картинкой.",
-            "Так його побачать усі. Зберігається разом із картинкою.",
-            "Everyone sees it this dark. Kept with the picture.");
+            "Так его увидят все. На тёмной теме баннер темнеет, на светлой "
+                    + "светлеет, чтобы текст поверх читался. Хранится с картинкой.",
+            "Так його побачать усі. На темній темі банер темнішає, на світлій "
+                    + "світлішає, щоб текст поверх читався. Зберігається з картинкою.",
+            "Everyone sees it this way. Darker under a dark theme, lighter under "
+                    + "a light one, so the text on top stays readable.");
 
     static final String BANNER_SHADE = pick(
             "Тень под текстом", "Тінь під текстом", "Shadow under the text");
@@ -443,16 +502,16 @@ final class Text {
                     + "the gradient and the banner are seen by everyone on MargyT.");
 
     static final String DONATE_BANNER_HOW = pick(
-            "После перевода — @narezany в Telegram: чек и ваш ID аккаунта.",
-            "Після переказу — @narezany в Telegram: чек і ваш ID акаунта.",
-            "After paying, write to @narezany on Telegram with the receipt and "
-                    + "your account ID.");
+            "После перевода — в сообщения канала: чек и ваш ID аккаунта.",
+            "Після переказу — у повідомлення каналу: чек і ваш ID акаунта.",
+            "After paying, write to the channel with the receipt and your "
+                    + "account ID.");
 
     static final String DONATE_BANNER_BUTTON = pick(
             "Пожертвовать", "Пожертвувати", "Donate");
 
     static final String DONATE_BANNER_WRITE = pick(
-            "Написать в Telegram", "Написати в Telegram", "Write on Telegram");
+            "Сообщения каналу", "Повідомлення каналу", "Message the channel");
 
     static final String REMIND_TITLE = pick(
             "Нравится MargyT?", "Подобається MargyT?", "Enjoying MargyT?");

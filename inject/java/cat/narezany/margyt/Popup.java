@@ -410,12 +410,15 @@ public final class Popup {
      * again is the whole point.
      */
     public interface Reply {
-        /** Whether it worked, what went wrong, and the code to show now. */
-        void said(boolean ok, String trouble, String code);
+        /**
+         * Whether it worked, what went wrong, the code to show now, and
+         * whether the server could not find the page on its own.
+         */
+        void said(boolean ok, String trouble, String code, boolean askName);
     }
 
     public interface Checking {
-        void check(Reply reply);
+        void check(String name, Reply reply);
     }
 
     public static void prove(Context context, String code, final Checking checking) {
@@ -475,6 +478,24 @@ public final class Popup {
             });
             card.addView(shown, wide(context, 0));
 
+            final android.widget.EditText named = new android.widget.EditText(context);
+            named.setHint(Text.PROVE_NAME);
+            named.setTextColor(skin.text);
+            named.setHintTextColor(skin.muted());
+            named.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            named.setSingleLine(true);
+            named.setPadding(dp(context, 12), dp(context, 10), dp(context, 12),
+                    dp(context, 10));
+            GradientDrawable line = new GradientDrawable();
+            line.setColor(skin.page);
+            line.setCornerRadius(dp(context, 10));
+            line.setStroke(dp(context, 1), skin.muted());
+            named.setBackground(line);
+            // only for the accounts whose page the server cannot reach from
+            // the id: everybody else never sees a box to type in
+            named.setVisibility(View.GONE);
+            card.addView(named, wide(context, 10));
+
             final TextView tap = new TextView(context);
             tap.setText(Text.PROVE_TAP);
             tap.setTextColor(skin.muted());
@@ -501,14 +522,16 @@ public final class Popup {
                     go.setEnabled(false);
                     go.setAlpha(0.6f);
                     tap.setText(Text.PROVE_CHECKING);
-                    checking.check(new Reply() {
+                    checking.check(named.getText().toString(), new Reply() {
                         @Override
-                        public void said(boolean ok, String trouble, String fresh) {
+                        public void said(boolean ok, String trouble, String fresh,
+                                         boolean askName) {
                             if (ok) {
                                 close(dialog);
                                 return;
                             }
                             if (fresh != null && fresh.length() > 0) shown.setText(fresh);
+                            if (askName) named.setVisibility(View.VISIBLE);
                             tap.setText(trouble);
                             go.setEnabled(true);
                             go.setAlpha(1f);
@@ -517,6 +540,13 @@ public final class Popup {
                 }
             });
             card.addView(go, wide(context, 14));
+
+            TextView hidden = new TextView(context);
+            hidden.setText(Text.PROVE_HIDDEN);
+            hidden.setTextColor(skin.muted());
+            hidden.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            hidden.setPadding(0, dp(context, 12), 0, 0);
+            card.addView(hidden);
 
             TextView why = new TextView(context);
             why.setText(Text.PROVE_WHY);
@@ -735,6 +765,11 @@ public final class Popup {
         body.setTextColor(skin.text);
         body.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         body.setGravity(Gravity.CENTER);
+        // long update notes used to push the button off the bottom of the
+        // screen, where nothing could be done about them
+        body.setMaxHeight((int) (context.getResources()
+                .getDisplayMetrics().heightPixels * 0.5f));
+        body.setMovementMethod(new android.text.method.ScrollingMovementMethod());
         card.addView(body);
 
         TextView close = new TextView(context);

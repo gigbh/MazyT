@@ -37,7 +37,8 @@ public final class Dates {
         Boolean known = on;
         if (known != null) return known.booleanValue();
         SharedPreferences prefs = prefs();
-        boolean value = prefs != null && prefs.getBoolean(KEY, false);
+        if (prefs == null) return false;
+        boolean value = prefs.getBoolean(KEY, false);
         on = Boolean.valueOf(value);
         return value;
     }

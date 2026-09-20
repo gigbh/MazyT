@@ -59,6 +59,9 @@ public class SettingsActivity extends Activity {
     private static final String CHANNEL = "https://t.me/margytiktok";
     private static final String FORUM = "https://t.me/margeletforum";
     private static final String OWNER_TELEGRAM = "https://t.me/narezany";
+
+    /** Where a receipt goes: the channel's own messages, not somebody's inbox. */
+    private static final String CHANNEL_WRITE = "https://t.me/margytiktok?direct";
     private static final String OWNER_TIKTOK =
             "https://tiktok.com/@narezany?_r=1&_t=ZT-99hPDJ26hji_";
     private static final String HELPER = "https://www.tiktok.com/@MS4wLjABAAAApBE7v5"
@@ -80,6 +83,9 @@ public class SettingsActivity extends Activity {
     private boolean thanksOpen;
     private boolean mineOpen;
     private java.util.List<Mine.Held> ordering;
+
+    /** Set once the badges have been rearranged by hand and not yet saved. */
+    private boolean rearranged;
     private boolean streakOpen;
     private boolean diaryOpen;
 
@@ -460,6 +466,26 @@ public class SettingsActivity extends Activity {
             updates.addView(actionRow("extension", Text.UPDATE_INSTALL, null,
                     () -> Updater.install(this)));
         }
+        updates.addView(line());
+        updates.addView(toggleRow("bug_report", Text.PATCH_ON, Patch.wanted(this),
+                on -> Patch.setWanted(this, on)));
+        updates.addView(actionRow("download", Text.PATCH_CHECK,
+                Patch.running().length() > 0
+                        ? Text.PATCH_RUNNING + " " + Patch.running() : null,
+                () -> Patch.check(this, (got, trouble) -> {
+                    Screen.say(got ? Text.PATCH_GOT
+                            : (trouble.length() > 0 ? trouble : Text.PATCH_NONE));
+                    if (got) markChanged();
+                    rebuild();
+                })));
+        if (Patch.running().length() > 0 || Patch.onShelf(this)) {
+            updates.addView(actionRow("block", Text.PATCH_DROP, null, () -> {
+                Patch.drop(this);
+                markChanged();
+                rebuild();
+            }));
+        }
+        updates.addView(caption(Text.PATCH_NOTE));
         column.addView(wrap(updates));
 
         column.addView(section(Text.DIARY));
@@ -706,7 +732,9 @@ public class SettingsActivity extends Activity {
         // the list the server last sent wins over whatever was being
         // rearranged: the first answer on a cold start is empty, and without
         // this that empty answer is what stayed on screen
-        if (Mine.tookFresh()) ordering = null;
+        // a late answer from the server replaces the list, unless somebody is
+        // in the middle of arranging it: it used to throw their order away
+        if (Mine.tookFresh() && !rearranged) ordering = null;
         if (ordering == null) ordering = Mine.held();
         rows.addView(proveRow());
         if (ordering.isEmpty()) {
@@ -732,10 +760,12 @@ public class SettingsActivity extends Activity {
             // to fight the page it is on for the same gesture
             row.addView(mover("⌃", at > 0, () -> {
                 java.util.Collections.swap(ordering, at, at - 1);
+                rearranged = true;
                 rebuild();
             }));
             row.addView(mover("⌄", at < ordering.size() - 1, () -> {
                 java.util.Collections.swap(ordering, at, at + 1);
+                rearranged = true;
                 rebuild();
             }));
 
@@ -744,6 +774,7 @@ public class SettingsActivity extends Activity {
             toggle.setChecked(one.shown, false);
             toggle.setOnClickListener(v -> {
                 one.shown = !one.shown;
+                rearranged = true;
                 rebuild();
             });
             LinearLayout.LayoutParams size =
@@ -758,7 +789,10 @@ public class SettingsActivity extends Activity {
                 (ok, trouble) -> {
                     if (needsProof(ok, trouble)) return;
                     Screen.say(ok ? Text.MINE_SAVED : Text.MINE_TOO_OFTEN);
-                    ordering = null;
+                    if (ok) {
+                        rearranged = false;
+                        ordering = null;
+                    }
                     rebuild();
                 })));
         return rows;
@@ -811,14 +845,14 @@ public class SettingsActivity extends Activity {
     }
 
     private void askToCheck(String code) {
-        Popup.prove(this, code, reply -> Proof.check((ok, trouble) -> {
+        Popup.prove(this, code, (name, reply) -> Proof.check(name, (ok, trouble) -> {
             if (ok) {
                 Screen.say(Text.PROVE_OK);
                 ordering = null;
                 Mine.ask(this::rebuild);
             }
             // the card stays open on a no, with the trouble under the code
-            reply.said(ok, trouble, Proof.waiting());
+            reply.said(ok, trouble, Proof.waiting(), Proof.wantsName());
             rebuild();
         }));
     }
@@ -999,7 +1033,7 @@ public class SettingsActivity extends Activity {
         quiet.setCornerRadius(dp(14));
         quiet.setStroke(dp(1), skin.muted());
         write.setBackground(quiet);
-        write.setOnClickListener(v -> open(OWNER_TELEGRAM));
+        write.setOnClickListener(v -> open(CHANNEL_WRITE));
 
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
@@ -1113,10 +1147,19 @@ public class SettingsActivity extends Activity {
         return sized(row, 64);
     }
 
+    /** Whether an export is already running: two at once write one file. */
+    private static final java.util.concurrent.atomic.AtomicBoolean exporting =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
     private void exportTextures(final boolean withXml) {
+        if (!exporting.compareAndSet(false, true)) {
+            Screen.say(Text.TEXTURES_EXPORTING);
+            return;
+        }
         Screen.progress(Text.TEXTURES_EXPORTING, 0);
         Net.away("textures", () -> {
             final java.io.File out = Textures.export(this, withXml);
+            exporting.set(false);
             runOnUiThread(() -> Screen.say(out == null
                     ? Text.TEXTURES_FAILED : Text.TEXTURES_EXPORTED));
         });
@@ -2559,7 +2602,9 @@ public class SettingsActivity extends Activity {
             fill.setColor(colour);
             ring.setColor(colour);
             ring.setStyle(Paint.Style.STROKE);
-            setClickable(chosen ? false : true);
+            // clickable comes with the listener where there is one. Setting it
+            // here made every swatch swallow a tap, including the ones in a
+            // heading that are only there to be looked at
         }
 
         @Override

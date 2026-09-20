@@ -13,6 +13,14 @@ public final class Watch implements Application.ActivityLifecycleCallbacks {
 
     private Watch() {}
 
+    /** The screen on top, for anything that has to ask about TikTok's own. */
+    private static volatile java.lang.ref.WeakReference<Activity> here =
+            new java.lang.ref.WeakReference<Activity>(null);
+
+    public static Activity here() {
+        return here.get();
+    }
+
     public static void start(Application application) {
         try {
             application.registerActivityLifecycleCallbacks(new Watch());
@@ -23,6 +31,7 @@ public final class Watch implements Application.ActivityLifecycleCallbacks {
 
     @Override
     public void onActivityResumed(Activity activity) {
+        here = new java.lang.ref.WeakReference<Activity>(activity);
         try {
             Rate.apply(activity);
         } catch (Throwable ignored) {
@@ -35,9 +44,15 @@ public final class Watch implements Application.ActivityLifecycleCallbacks {
             Tester.mark(activity);
         } catch (Throwable ignored) {
         }
+        Patch.resumed(activity);
     }
 
-    @Override public void onActivityPaused(Activity activity) {}
+    @Override
+    public void onActivityPaused(Activity activity) {
+        if (here.get() == activity) {
+            here = new java.lang.ref.WeakReference<Activity>(null);
+        }
+    }
 
     @Override public void onActivityCreated(Activity activity, Bundle state) {}
     @Override public void onActivityStarted(Activity activity) {}

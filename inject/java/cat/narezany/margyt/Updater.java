@@ -65,6 +65,9 @@ public final class Updater {
             @Override
             public void run() {
                 check(application, false);
+                // a patch is small and silent: it is taken now and shows up
+                // the next time the app starts
+                Patch.check(application, null);
                 handler.postDelayed(this, EVERY);
             }
         });

@@ -453,23 +453,65 @@ public final class Themes {
     private static volatile int mode;  // 0 unknown, 1 dark, 2 light
     private static volatile long asked;
 
-    /** Whether the app is wearing its dark theme, asked at most once a second. */
+    /**
+     * Whether the app is wearing its dark theme, asked at most once a second.
+     *
+     * Asked of the screen that is on top rather than of the application. TikTok
+     * has a theme switch of its own, and a phone set to light with TikTok set
+     * to dark leaves the application saying "light" while every pixel on screen
+     * says otherwise. The mod then repainted the colours it owns for the wrong
+     * theme and left everything else alone, which is how a dark screen ended up
+     * half light.
+     *
+     * What is on the window is worth more than what is in a setting, so the
+     * window's own background is read first, and the configuration is only the
+     * answer when there is no window to look at.
+     */
     public static boolean isDark() {
         long now = android.os.SystemClock.uptimeMillis();
         if (mode != 0 && now - asked < 1000) return mode == 1;
-        boolean dark = true;
+        Boolean seen = painted();
+        boolean dark = seen != null ? seen.booleanValue() : configured();
+        mode = dark ? 1 : 2;
+        asked = now;
+        return dark;
+    }
+
+    /** What the screen on top is painted with, if it says plainly. */
+    private static Boolean painted() {
+        try {
+            android.app.Activity here = Watch.here();
+            if (here == null) return null;
+            android.view.View decor = here.getWindow() == null
+                    ? null : here.getWindow().getDecorView();
+            android.graphics.drawable.Drawable ground =
+                    decor == null ? null : decor.getBackground();
+            if (ground instanceof android.graphics.drawable.ColorDrawable) {
+                int colour = ((android.graphics.drawable.ColorDrawable) ground).getColor();
+                if (android.graphics.Color.alpha(colour) == 255) {
+                    return Boolean.valueOf(brightness(colour) < 0.5f);
+                }
+            }
+            Configuration config = here.getResources().getConfiguration();
+            return Boolean.valueOf((config.uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                    == Configuration.UI_MODE_NIGHT_YES);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /** The application's own idea, which is the phone's unless TikTok says otherwise. */
+    private static boolean configured() {
         try {
             Context context = Margy.context();
             if (context != null) {
                 Configuration config = context.getResources().getConfiguration();
-                dark = (config.uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                return (config.uiMode & Configuration.UI_MODE_NIGHT_MASK)
                         == Configuration.UI_MODE_NIGHT_YES;
             }
         } catch (Throwable ignored) {
         }
-        mode = dark ? 1 : 2;
-        asked = now;
-        return dark;
+        return true;
     }
 
     /** Something the answers depend on has changed; nothing remembered stands. */

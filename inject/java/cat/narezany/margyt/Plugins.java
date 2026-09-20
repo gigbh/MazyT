@@ -320,6 +320,11 @@ public final class Plugins {
         publish();
     }
 
+    /** Whether anything at all is running, for the hooks on the hot paths. */
+    public static boolean anyRunning() {
+        return running.length > 0;
+    }
+
     // ---------------------------------------------------------- the sending
 
     public static void onActivityCreated(Activity activity) {

@@ -18,7 +18,11 @@ import urllib.request
 BROWSER = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
            " (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
-NAME = re.compile(r"^[A-Za-z0-9._]{2,24}$")
+#: TikTok hands out names of letters, digits, dots and underscores -- but a
+#: bug in 2024 let people take names in other alphabets, and those accounts
+#: are still here. Latin only turned every one of them away before anything
+#: was even asked.
+NAME = re.compile(r"^[^\s/?#@&=%\\]{2,30}$")
 
 
 def named(name):
@@ -82,13 +86,18 @@ def name_of(uid, patience=15):
         where = moved.where
     except Exception:
         return None
-    found = re.search(r"/@([A-Za-z0-9._]{2,24})", where or "")
+    # the name in a redirect may arrive as itself or as percent-escapes,
+    # depending on the alphabet it is written in
+    found = re.search(r"/@([^/?#]{1,90})", where or "")
     if not found:
+        return None
+    name = urllib.parse.unquote(found.group(1))
+    if not named(name):
         return None
     if len(NAMES) > 5000:
         NAMES.clear()
-    NAMES[uid] = (time.time(), found.group(1))
-    return found.group(1)
+    NAMES[uid] = (time.time(), name)
+    return name
 
 
 def read(text, name):
@@ -146,6 +155,38 @@ def one(text, pattern):
         return json.loads('"%s"' % found.group(1))
     except Exception:
         return found.group(1)
+
+
+def behind(uid, patience=20):
+    """The account with this id, read off its own page.
+
+    The share link is followed wherever it goes rather than picked apart. It
+    answers with an @name most of the time, with percent-escapes when the name
+    is not written in latin -- people took such names through a bug in 2024
+    and still have them -- and with a sec_uid for some accounts. All three are
+    a page; only the shape of the address differs, and the page says which id
+    it belongs to, which is the thing being checked anyway.
+    """
+    if not uid or not uid.isdigit():
+        return None
+    for attempt in (0, 1):
+        if attempt:
+            time.sleep(1.5)
+        try:
+            request = urllib.request.Request(
+                "https://www.tiktok.com/share/user/" + uid,
+                headers={"User-Agent": BROWSER, "Accept-Language": "en"})
+            with urllib.request.urlopen(request, timeout=patience) as answer:
+                where = answer.geturl()
+                body = answer.read(900000).decode("utf-8", "replace")
+        except Exception:
+            continue
+        found = re.search(r"/@([^/?#]{1,90})", where or "")
+        name = urllib.parse.unquote(found.group(1)) if found else ""
+        who = read(body, name)
+        if who:
+            return who
+    return None
 
 
 def profile(name, patience=20):

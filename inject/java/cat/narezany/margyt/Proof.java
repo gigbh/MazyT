@@ -31,6 +31,22 @@ public final class Proof {
     /** The code the server last gave, kept only while the screen is open. */
     private static volatile String code = "";
 
+    /**
+     * The half of the proof that never goes in a bio.
+     *
+     * A code sits where anybody can read it, so on its own it says nothing
+     * about who is asking. The server hands this out with the code and will
+     * only finish a proof for whoever gives it back.
+     */
+    private static volatile String holder = "";
+
+    /** Set when the server could not find the page and wants the name. */
+    private static volatile boolean needsName;
+
+    public static boolean wantsName() {
+        return needsName;
+    }
+
     public interface Then {
         void then(boolean ok, String trouble);
     }
@@ -88,7 +104,9 @@ public final class Proof {
                     return;
                 }
                 try {
-                    code = new JSONObject(said.body).optString("code", "");
+                    JSONObject told = new JSONObject(said.body);
+                    code = told.optString("code", "");
+                    holder = told.optString("holder", "");
                 } catch (Throwable error) {
                     Diary.note("proof: " + error);
                 }
@@ -104,21 +122,26 @@ public final class Proof {
      * name an id belongs to, so the server finds the page itself rather than
      * making somebody type their own name into a box.
      */
-    public static void check(final Then then) {
+    public static void check(final String name, final Then then) {
         final String uid = Account.id();
         if (uid == null || uid.length() == 0) {
             answer(then, false, Text.PROVE_NO_ACCOUNT);
             return;
         }
+        final String asked = clean(name);
         Net.away("proof: check", new Runnable() {
             @Override
             public void run() {
-                Net.Said said = Net.talk(Badges.SERVER + "/prove/check",
-                        json("uid", uid));
+                Net.Said said = asked.length() > 0
+                        ? Net.talk(Badges.SERVER + "/prove/check",
+                                json("uid", uid, "holder", holder, "name", asked))
+                        : Net.talk(Badges.SERVER + "/prove/check",
+                                json("uid", uid, "holder", holder));
                 if (!said.ok()) {
-                    // a code that ran out is not something to tell anybody
-                    // off about: the next one is fetched before answering
-                    if (said.code == 410) mint(uid);
+                    // whatever went wrong, the code on the card may no longer
+                    // be the one the server is waiting for, so it is asked
+                    // again before anything is said to anybody
+                    mint(uid);
                     answer(then, false, trouble(said));
                     return;
                 }
@@ -134,6 +157,8 @@ public final class Proof {
                         }
                         Mine.read(told);
                         code = "";
+                        holder = "";
+                        needsName = false;
                         ok = true;
                     }
                 } catch (Throwable error) {
@@ -144,15 +169,31 @@ public final class Proof {
         });
     }
 
-    /** Take a fresh code, in the thread that just found the old one spent. */
+    /** Ask what the code is now, in the thread that just failed a check. */
     private static void mint(String uid) {
         try {
             Net.Said said = Net.talk(Badges.SERVER + "/prove", json("uid", uid));
-            code = said.ok() ? new JSONObject(said.body).optString("code", "") : "";
+            if (!said.ok()) return;
+            JSONObject told = new JSONObject(said.body);
+            String fresh = told.optString("code", "");
+            if (fresh.length() > 0) code = fresh;
+            String key = told.optString("holder", "");
+            if (key.length() > 0) holder = key;
         } catch (Throwable error) {
             Diary.note("proof: " + error);
-            code = "";
         }
+    }
+
+    /** An @name as the server wants it: no at, no link around it. */
+    static String clean(String name) {
+        if (name == null) return "";
+        String out = name.trim();
+        int slash = out.lastIndexOf('/');
+        if (slash >= 0) out = out.substring(slash + 1);
+        while (out.startsWith("@")) out = out.substring(1);
+        int query = out.indexOf('?');
+        if (query >= 0) out = out.substring(0, query);
+        return out.trim();
     }
 
     /** What the server refused with, in words rather than in a number. */
@@ -164,6 +205,9 @@ public final class Proof {
             }
         } catch (Throwable ignored) {
         }
+        needsName = "tell me the name".equals(what);
+        if (needsName) return Text.PROVE_NEED_NAME;
+        if ("that is not the code's owner".equals(what)) return Text.PROVE_NOT_YOURS;
         if (said.code == 0) return Text.PROVE_NO_SERVER;
         if ("the code is not in that profile yet".equals(what)) return Text.PROVE_NOT_THERE;
         if ("that name belongs to another account".equals(what)) return Text.PROVE_OTHER_NAME;

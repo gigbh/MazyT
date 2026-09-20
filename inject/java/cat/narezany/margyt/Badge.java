@@ -50,13 +50,26 @@ public final class Badge {
 
     public static String getNickname(User user) {
         if (user == null) return null;
-        return marked(user.getNickname(), user.getUid(), false);
+        String name = user.getNickname();
+        // the id is asked for inside the guard: this is a landing place for
+        // one of TikTok's own calls, and anything thrown here is thrown at
+        // TikTok rather than at the mod
+        try {
+            return marked(name, user.getUid(), false);
+        } catch (Throwable ignored) {
+            return name;
+        }
     }
 
     /** The same name, off the model a loaded profile uses instead. */
     public static String getNickname(UserProfileInfo user) {
         if (user == null) return null;
-        return marked(user.getNickname(), user.getUid(), true);
+        String name = user.getNickname();
+        try {
+            return marked(name, user.getUid(), true);
+        } catch (Throwable ignored) {
+            return name;
+        }
     }
 
     /**
@@ -69,6 +82,12 @@ public final class Badge {
      */
     private static String marked(String name, String uid, boolean fromProfile) {
         if (name == null || name.length() == 0) return name;
+        // with badges off and no plugin listening, a name is somebody else's
+        // text and is handed back exactly as it came
+        if (!Badges.isEnabled() && !Plugins.anyRunning()
+                && Patch.running().length() == 0) {
+            return name;
+        }
         try {
             // Cleared first, always. Whatever marks are on the way in are
             // either ones the mod put there a moment ago -- in which case
@@ -76,7 +95,8 @@ public final class Badge {
             // somebody typed into their own name to wear a badge they were
             // never given. Neither survives; only what the account is owed is
             // put back.
-            String own = Plugins.name(uid, strip(name));
+            String mended = Patch.name(uid, name);
+            String own = Plugins.name(uid, strip(mended == null ? name : mended));
             remember(uid, own, fromProfile);
             String marks = Badges.marksFor(uid) + Looks.mark(uid);
             if (marks.length() > 0) return own + '\u2009' + marks;

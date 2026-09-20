@@ -32,6 +32,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import badges as service
+import tiktok
 
 TOKEN_FILE = os.path.join(HERE, "bot.txt")
 
@@ -135,7 +136,7 @@ def by_name(name, patience=20):
     and reading the page every time is what made the bot stop answering
     anything at all.
     """
-    if not re.match(r"^[A-Za-z0-9._]{2,24}$", name):
+    if not tiktok.named(name):
         return None
     known, who = remembered(name)
     if known:

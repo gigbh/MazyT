@@ -172,6 +172,18 @@ def page(title, body, said=""):
 
 
 def sign_in_page(trouble=""):
+    mended = []
+    for one in patches:
+        mended.append(
+            "<tr><td><b>%s</b></td><td class=dim>мод %s</td><td class=dim>%s</td>"
+            "<td class=dim>%s</td><td class=dim>%d КБ</td>"
+            "<td><form method=post action='/admin/patch/drop' style='display:inline'>"
+            "<input type=hidden name=file value='%s'>"
+            "<button class=quiet>Снять</button></form></td></tr>"
+            % (html.escape(one["version"]), html.escape(one["mod"]),
+               html.escape(one["tiktok"] or "любая"), html.escape(one["notes"] or ""),
+               one["size"] // 1024, html.escape(one["file"])))
+
     return page("MargyT", """
         <h1>MargyT</h1>
         <p class=dim>Панель</p>
@@ -198,7 +210,7 @@ def when(stamp):
     return "%d дн назад" % (gone // 86400)
 
 
-def main_page(badges, plugins, banners=(), gradients=(), said=""):
+def main_page(badges, plugins, banners=(), gradients=(), patches=(), said=""):
     rows = []
     for badge in badges:
         rows.append(
@@ -245,6 +257,18 @@ def main_page(badges, plugins, banners=(), gradients=(), said=""):
             "<button class=quiet>Снять</button></form></td></tr>"
             % (html.escape(one["uid"]), strip, strip, html.escape(one["uid"])))
 
+    mended = []
+    for one in patches:
+        mended.append(
+            "<tr><td><b>%s</b></td><td class=dim>мод %s</td><td class=dim>%s</td>"
+            "<td class=dim>%s</td><td class=dim>%d КБ</td>"
+            "<td><form method=post action='/admin/patch/drop' style='display:inline'>"
+            "<input type=hidden name=file value='%s'>"
+            "<button class=quiet>Снять</button></form></td></tr>"
+            % (html.escape(one["version"]), html.escape(one["mod"]),
+               html.escape(one["tiktok"] or "любая"), html.escape(one["notes"] or ""),
+               one["size"] // 1024, html.escape(one["file"])))
+
     return page("MargyT", """
         <h1>MargyT</h1>
         <p class=dim>Значки, плагины, баннеры и градиенты</p>
@@ -289,6 +313,23 @@ def main_page(badges, plugins, banners=(), gradients=(), said=""):
           %s
         </table></div>
 
+        <h2>Заплатки</h2>
+        <div class=card><table>
+          <tr><th>версия</th><th>для</th><th>TikTok</th><th>что чинит</th>
+              <th>размер</th><th></th></tr>
+          %s
+        </table></div>
+
+        <h2>Загрузить заплатку</h2>
+        <form class=card method=post action="/admin/patch/add"
+              enctype="multipart/form-data">
+          <p class=dim>Файл .margyupd, собранный и подписанный через
+             <code>tools/make_patch.py</code>. Телефон сам проверит подпись,
+             сервер только хранит.</p>
+          <input type=file name=file accept=".margyupd,.zip">
+          <p><button>Загрузить</button></p>
+        </form>
+
         <h2>Плагины</h2>
         <div class=card><table>
           <tr><th></th><th>плагин</th><th>автор</th><th>TikTok</th><th></th></tr>
@@ -318,6 +359,7 @@ def main_page(badges, plugins, banners=(), gradients=(), said=""):
         """ % ("".join(rows) or "<tr><td class=dim>пока пусто</td></tr>",
                "".join(shown) or "<tr><td class=dim>пока пусто</td></tr>",
                "".join(painted) or "<tr><td class=dim>пока пусто</td></tr>",
+               "".join(mended) or "<tr><td class=dim>пока пусто</td></tr>",
                "".join(packs) or "<tr><td class=dim>пока пусто</td></tr>"), said)
 
 

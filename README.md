@@ -466,6 +466,38 @@ official app, and the official app has to go first.
 The one permission the build adds is `REQUEST_INSTALL_PACKAGES`, and only
 because the mod offers its own updates.
 
+## Fixes without a three hundred megabyte download
+
+A release is an apk of about 385 MB, nearly all of it TikTok's own assets, and
+installing one takes a minute of somebody's evening. The mod's own code is
+under a megabyte of that. So a small fix does not have to be a release: it can
+be a **patch**, a signed file the mod fetches in the background and loads the
+next time TikTok starts.
+
+    python3 tools/make_patch.py patches/hello --version 1 --notes "what it fixes"
+
+A patch is a zip of three things: `manifest.json`, `classes.dex`, and a
+`signature` over both. The signing key lives on one machine. Its public half is
+built into the apk, and a build made without the key refuses every patch --
+which is the right way round, because the server answers over plain http and a
+file that becomes running code inside somebody else's TikTok cannot be trusted
+for arriving from the expected address.
+
+What a patch can do is bounded, and the boundary is not a matter of effort. The
+hooks are rewritten call sites *inside the installed apk*; nothing arriving
+afterwards can add one or move one. A patch implements `Mend` and is called
+where the mod asks: at start-up, when a screen comes up, when a name is about
+to be drawn, and at a handful of decision points that pass through
+`Patch.ask`. From there it can reach everything the mod makes public. It cannot
+rewrite a method that is already compiled into the apk, and a class it carries
+under a name the apk already has is never reached -- the apk's own loader
+answers first.
+
+A patch that throws while starting is deleted rather than kept: a marker is
+written before it runs and cleared after, so one that costs an app costs a
+restart and nothing more. Patches can be switched off entirely in the
+settings, and taking one off is a button.
+
 ## Building it yourself
 
 You need a JDK (17 or newer) and Python 3. Nothing else: smali, d8, android.jar
@@ -557,6 +589,8 @@ only thing here that wants aapt2.
 | `margyt/png.py` | just enough PNG to resize an icon, so Pillow is not needed |
 | `margyt/vector.py` | vector drawables, compiled without aapt2 |
 | `margyt/plugin.py` | packs a folder into an `.mtp`, with the same pinned toolchain |
+| `tools/make_patch.py` | builds and signs a `.margyupd`: a fix that travels without an apk |
+| `patches/hello/` | the smallest patch there is, and the shape every other one takes |
 | `inject/java/` | the mod itself: its screen, and the methods the rewrites land in |
 | `badges.json` | the badges, read from here by every install |
 | `version.json` | what the latest release is, read from here by every install |

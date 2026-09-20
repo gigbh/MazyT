@@ -45,6 +45,7 @@ import sqlite3
 import threading
 import time
 import urllib.request
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -75,6 +76,12 @@ MOST_BADGES = 16
 
 #: the badge that makes somebody a supporter, and the two things it unlocks
 SUPPORTER = "supporter"
+
+#: where the patches live. A patch is a signed zip the mod loads at start-up;
+#: the server only stores them and says which is newest, because the phone
+#: checks the signature itself and the key to make one is not here.
+PATCHES = os.path.join(HERE, "patches")
+PATCH_MOST = 8 * 1024 * 1024
 
 #: where a banner is kept, and how much of one is accepted
 BANNERS = os.path.join(HERE, "banners")
@@ -158,11 +165,14 @@ def prepare():
             changed INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS proof (
-            uid   TEXT PRIMARY KEY,
-            code  TEXT NOT NULL,
-            made  INTEGER NOT NULL DEFAULT 0,
-            tried INTEGER NOT NULL DEFAULT 0,
-            last  INTEGER NOT NULL DEFAULT 0
+            uid      TEXT PRIMARY KEY,
+            code     TEXT NOT NULL,
+            made     INTEGER NOT NULL DEFAULT 0,
+            tried    INTEGER NOT NULL DEFAULT 0,
+            last     INTEGER NOT NULL DEFAULT 0,
+            was      TEXT NOT NULL DEFAULT '',
+            was_made INTEGER NOT NULL DEFAULT 0,
+            holder   TEXT NOT NULL DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS gradient (
             uid     TEXT PRIMARY KEY,
@@ -215,6 +225,14 @@ def prepare():
                        % column)
     # keys used to be handed to whoever asked first, so every key that exists
     # was made under a rule that no longer holds
+    # the code before this one is kept as well: replacing a code used to make
+    # the one already sitting in somebody's bio worthless that second
+    proof_columns = [row[1] for row in db.execute("PRAGMA table_info(proof)")]
+    for column, kind in (("was", "TEXT NOT NULL DEFAULT ''"),
+                         ("was_made", "INTEGER NOT NULL DEFAULT 0"),
+                         ("holder", "TEXT NOT NULL DEFAULT ''")):
+        if column not in proof_columns:
+            db.execute("ALTER TABLE proof ADD COLUMN %s %s" % (column, kind))
     owner_columns = [row[1] for row in db.execute("PRAGMA table_info(owner)")]
     for column, kind in (("proved", "INTEGER NOT NULL DEFAULT 0"),
                          ("proved_at", "INTEGER NOT NULL DEFAULT 0"),
@@ -411,8 +429,14 @@ def a_read_to_spare():
 def prove(body, ip):
     """A code for this account to put in its bio.
 
-    The same code comes back while it is good for anything, so pressing the
-    button twice does not leave a stale one in a bio.
+    The same code comes back every time, and asking again puts its clock back
+    to the start. A code used to be replaced once it was old, which is the
+    worst possible moment: it is exactly then that somebody has it pasted in
+    their bio and is on their way back to press Check.
+
+    A code is worth nothing to anybody else. It proves the account whose page
+    carries it, so the same code in somebody else's bio proves their account
+    and nothing more.
     """
     uid = body.get("uid", "")
     if not sane(uid):
@@ -420,18 +444,19 @@ def prove(body, ip):
 
     now = int(time.time())
     db = connect()
-    row = db.execute("SELECT code, made FROM proof WHERE uid = ?", (uid,)).fetchone()
-    if row and now - row[1] < PROOF_LIVES - PROOF_SPARE:
-        code, made = row[0], row[1]
-    else:
-        code, made = "margyt-" + secrets.token_hex(3), now
-        db.execute("INSERT INTO proof (uid, code, made, tried, last)"
-                   " VALUES (?,?,?,0,0) ON CONFLICT(uid) DO UPDATE SET"
-                   " code = excluded.code, made = excluded.made, tried = 0, last = 0",
-                   (uid, code, made))
-        db.commit()
+    row = db.execute("SELECT code, holder FROM proof WHERE uid = ?", (uid,)).fetchone()
+    code, made = (row[0] if row else "margyt-" + secrets.token_hex(3)), now
+    # the code goes in a bio, where everyone can read it, so it cannot be the
+    # only thing standing between an account and its key. This does not leave
+    # the phone that asked
+    holder = (row[1] if row and row[1] else secrets.token_hex(16))
+    db.execute("INSERT INTO proof (uid, code, made, tried, last, holder)"
+               " VALUES (?,?,?,0,0,?) ON CONFLICT(uid) DO UPDATE SET"
+               " made = excluded.made, tried = 0, last = 0, holder = excluded.holder",
+               (uid, code, made, holder))
+    db.commit()
     db.close()
-    return 200, {"code": code, "until": made + PROOF_LIVES}
+    return 200, {"code": code, "holder": holder, "until": made + PROOF_LIVES}
 
 
 def prove_check(body, ip):
@@ -449,12 +474,29 @@ def prove_check(body, ip):
 
     now = int(time.time())
     db = connect()
-    row = db.execute("SELECT code, made, tried, last FROM proof WHERE uid = ?",
-                     (uid,)).fetchone()
-    if not row or now - row[1] > PROOF_LIVES:
+    row = db.execute("SELECT code, made, tried, last, was, was_made, holder"
+                     " FROM proof WHERE uid = ?", (uid,)).fetchone()
+    if not row:
         db.close()
         return 410, {"error": "ask for a code first"}
-    code, tried, last = row[0], row[2], row[3]
+    # a phone that says which secret it holds must hold the right one. One
+    # that says nothing is an older mod, and is let through until they have
+    # had time to update
+    told = body.get("holder", "")
+    if told and not (isinstance(told, str)
+                     and secrets.compare_digest(told, row[6] or "")):
+        db.close()
+        return 403, {"error": "that is not the code's owner"}
+    codes = []
+    if now - row[1] <= PROOF_LIVES:
+        codes.append(row[0])
+    # the one before it, for as long as somebody could still be looking at it
+    if row[4] and now - row[5] <= PROOF_LIVES + PROOF_SPARE:
+        codes.append(row[4])
+    if not codes:
+        db.close()
+        return 410, {"error": "ask for a code first"}
+    tried, last = row[2], row[3]
     if tried >= PROOF_TRIES:
         db.close()
         return 429, {"error": "too many tries, ask for a new code"}
@@ -469,22 +511,24 @@ def prove_check(body, ip):
     if not a_read_to_spare():
         return 503, {"error": "too many at once, try again in a minute"}
 
-    found = tiktok.name_of(uid)
-    if not found:
-        time.sleep(1.0)
-        found = tiktok.name_of(uid)
-    if found:
-        name = found
-    if not tiktok.named(name):
-        return 502, {"error": "tiktok did not answer"}
-
-    who = tiktok.profile(name)
+    # the id is what is being proved, so the page is reached from the id
+    # rather than from a name anybody typed. A name sent with the request is
+    # only a fallback for the day the share link stops answering
+    who = tiktok.behind(uid)
+    if not who and tiktok.named(name):
+        who = tiktok.profile(name)
     if not who:
+        # some accounts have no page the share link can reach: it answers
+        # with a sec_uid, and TikTok's web has nothing behind one. Those
+        # people have to say what their name is, and the page it leads to is
+        # still checked against the id
+        if not tiktok.named(name):
+            return 502, {"error": "tell me the name"}
         return 502, {"error": "tiktok did not answer"}
     if who.get("uid") != uid:
         return 403, {"error": "that name belongs to another account"}
     said = " ".join([who.get("about") or "", who.get("nickname") or ""]).lower()
-    if code not in said:
+    if not any(one in said for one in codes):
         return 400, {"error": "the code is not in that profile yet"}
 
     token = secrets.token_hex(16)
@@ -759,6 +803,90 @@ def free(body, ip):
     out = mine(uid)
     db.close()
     return 200, {"badges": out}
+
+
+def patch_for(mod, tiktok):
+    """The newest patch built for this mod, or nothing.
+
+    Each file carries its own manifest, so nothing about a patch is written
+    down twice: the file is the record.
+    """
+    if not isinstance(mod, str) or not NAMED.match(mod.replace(".", "_") or "_"):
+        return None
+    best = None
+    try:
+        names = sorted(os.listdir(PATCHES))
+    except OSError:
+        return None
+    for name in names:
+        if not name.endswith(".margyupd"):
+            continue
+        said = patch_manifest(os.path.join(PATCHES, name))
+        if not said or said.get("mod") != mod:
+            continue
+        wants = said.get("tiktok") or ""
+        if wants and tiktok and wants != tiktok:
+            continue
+        if best is None or version_before(best[0].get("version", ""),
+                                          said.get("version", "")):
+            best = (said, name)
+    if not best:
+        return None
+    said, name = best
+    return {"version": said.get("version", ""), "url": "/patch/" + name,
+            "notes": said.get("notes", ""), "notes_ru": said.get("notes_ru", ""),
+            "made": said.get("made", 0)}
+
+
+def patches():
+    """Every patch on the shelf, newest first, as the panel shows them."""
+    out = []
+    try:
+        names = os.listdir(PATCHES)
+    except OSError:
+        return out
+    for name in sorted(names):
+        if not name.endswith(".margyupd"):
+            continue
+        said = patch_manifest(os.path.join(PATCHES, name)) or {}
+        out.append({
+            "file": name,
+            "version": said.get("version", "?"),
+            "mod": said.get("mod", "?"),
+            "tiktok": said.get("tiktok", ""),
+            "notes": said.get("notes_ru") or said.get("notes", ""),
+            "size": os.path.getsize(os.path.join(PATCHES, name)),
+        })
+    out.sort(key=lambda one: one["file"], reverse=True)
+    return out
+
+
+def patch_manifest(path):
+    """What a patch says about itself, read out of the file."""
+    try:
+        with zipfile.ZipFile(path) as pack:
+            with pack.open("manifest.json") as handle:
+                return json.loads(handle.read(64 * 1024).decode("utf-8"))
+    except Exception:
+        return None
+
+
+def version_before(one, two):
+    """Whether one version is older than another, by its numbers."""
+    def numbers(said):
+        out = []
+        for piece in str(said).split("."):
+            try:
+                out.append(int(piece))
+            except ValueError:
+                out.append(0)
+        return out
+    left, right = numbers(one), numbers(two)
+    while len(left) < len(right):
+        left.append(0)
+    while len(right) < len(left):
+        right.append(0)
+    return left < right
 
 
 def sane(uid):
@@ -1103,7 +1231,7 @@ class Handler(BaseHTTPRequestHandler):
                            " ORDER BY changed DESC")]
             db.close()
             self.html(panel.main_page(badges, plugins()["plugins"], looks, colours,
-                                      query.get("said", [""])[0]))
+                                      patches(), query.get("said", [""])[0]))
             return
 
         if path == "/admin/badge":
@@ -1145,6 +1273,52 @@ class Handler(BaseHTTPRequestHandler):
 
         if not self.signed_in():
             self.html(panel.sign_in_page())
+            return
+
+        if path == "/admin/patch/add":
+            try:
+                form = cgi.FieldStorage(
+                    fp=self.rfile, headers=self.headers,
+                    environ={"REQUEST_METHOD": "POST",
+                             "CONTENT_TYPE": self.headers.get("Content-Type", "")})
+                item = form["file"]
+                raw = item.file.read() if item.filename else b""
+            except Exception as trouble:
+                self.go("/admin?said=не вышло: %s" % trouble)
+                return
+            if not raw or len(raw) > PATCH_MOST:
+                self.go("/admin?said=пустой или слишком большой файл")
+                return
+            said = None
+            try:
+                with zipfile.ZipFile(io.BytesIO(raw)) as pack:
+                    inside = set(pack.namelist())
+                    said = json.loads(pack.read("manifest.json").decode("utf-8"))
+                if not {"manifest.json", "classes.dex", "signature"} <= inside:
+                    raise ValueError("в файле не хватает частей")
+            except Exception as trouble:
+                self.go("/admin?said=это не заплатка: %s" % trouble)
+                return
+            mod = str(said.get("mod") or "")
+            which = str(said.get("version") or "")
+            if not named(mod.replace(".", "_")) or not named(which.replace(".", "_")):
+                self.go("/admin?said=в манифесте нет версии")
+                return
+            os.makedirs(PATCHES, exist_ok=True)
+            name = "%s-%s.margyupd" % (mod, which)
+            with open(os.path.join(PATCHES, name), "wb") as handle:
+                handle.write(raw)
+            self.go("/admin?said=заплатка %s для %s загружена" % (which, mod))
+            return
+
+        if path == "/admin/patch/drop":
+            which = os.path.basename(self.form().get("file", ""))
+            if which.endswith(".margyupd"):
+                try:
+                    os.remove(os.path.join(PATCHES, which))
+                except OSError:
+                    pass
+            self.go("/admin?said=заплатка снята")
             return
 
         if path == "/admin/password":
@@ -1302,6 +1476,15 @@ class Handler(BaseHTTPRequestHandler):
             with open(file, "rb") as handle:
                 self.answer(200, None, "application/octet-stream", handle.read())
             return
+        if path.startswith("/patch/"):
+            name = os.path.basename(path[len("/patch/"):])
+            file = os.path.join(PATCHES, name)
+            if not name.endswith(".margyupd") or not os.path.isfile(file):
+                self.answer(404, {"error": "no such patch"})
+                return
+            with open(file, "rb") as handle:
+                self.answer(200, None, "application/octet-stream", handle.read())
+            return
         if path == "/plugins":
             self.answer(200, plugins())
             return
@@ -1448,6 +1631,11 @@ class Handler(BaseHTTPRequestHandler):
             code, out = gradient(body, ip)
         elif path == "/shade":
             code, out = shade(body, ip)
+        elif path == "/patches":
+            # the ask and the file are different paths on purpose: nginx
+            # redirects /patch to /patch/ once /patch/ is a location of its own
+            found = patch_for(body.get("mod", ""), body.get("tiktok", ""))
+            code, out = 200, (found or {})
         else:
             code, out = 404, {"error": "no such thing"}
         self.answer(code, out)

@@ -386,7 +386,11 @@ public final class Banner {
             canvas.drawBitmap(picture, null,
                     new android.graphics.RectF(left, top, left + across, top + down), brush);
             if (dim > 0) {
-                canvas.drawColor((int) (dim * 2.55f) << 24);
+                // black over a dark theme, white over a light one. The name and
+                // the counts on top are white in one and near black in the
+                // other, and a veil that only ever darkens puts black on black
+                int veil = Themes.isDark() ? 0x000000 : 0xFFFFFF;
+                canvas.drawColor(((int) (dim * 2.55f) << 24) | veil);
             }
         }
 

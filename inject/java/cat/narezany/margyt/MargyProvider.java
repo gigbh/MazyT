@@ -45,6 +45,13 @@ public final class MargyProvider extends ContentProvider {
             Diary.note("hook failed: " + error);
         }
         try {
+            // before anything else of the mod's: a patch is there to stand in
+            // front of whatever the build got wrong
+            Patch.start(context);
+        } catch (Throwable error) {
+            Diary.note("patch failed to start: " + error);
+        }
+        try {
             Badges.start(context);
         } catch (Throwable error) {
             Diary.note("badges failed to start: " + error);

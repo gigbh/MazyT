@@ -114,6 +114,7 @@ class Build:
         self.write_emblem()
         self.write_icons()
         self.write_version(manifest_module.version_name(manifest), self.test)
+        self.write_patch_key()
         self.find_anchors(apk)
         self.write_theme(arsc)
         self.write_shots(manifest)
@@ -359,6 +360,49 @@ class Build:
             )
         self.detail("MargyT %s on TikTok %s%s"
                     % (mod, tiktok, ", a test build" if test else ""))
+
+    #: where the key that signs patches is looked for. The private half is
+    #: never in this repository and never on the server; the public half is
+    #: built into the apk so a phone can tell a patch of ours from anybody
+    #: else's.
+    PATCH_KEY = os.path.join(os.path.expanduser("~"), ".config", "margyt",
+                             "patch-public.b64")
+
+    def write_patch_key(self) -> None:
+        """Bake in the key that a patch has to be signed with.
+
+        Without a key the build still works and patches are simply refused:
+        an apk that would run anything handed to it over plain http is worse
+        than an apk that cannot be patched at all.
+        """
+        key = ""
+        path = os.environ.get("MARGYT_PATCH_KEY", self.PATCH_KEY)
+        try:
+            with open(path, encoding="utf-8") as handle:
+                key = handle.read().strip()
+        except OSError:
+            pass
+
+        out = os.path.join(self.root, "inject", "java", "cat", "narezany", "margyt",
+                           "Patchkey.java")
+        with open(out, "w", encoding="utf-8") as handle:
+            handle.write(
+                "package cat.narezany.margyt;\n\n"
+                "/**\n"
+                " * Written by the build. Do not edit.\n"
+                " *\n"
+                " * The public half of the key patches are signed with, in the\n"
+                " * shape `KeyFactory` wants. Empty means this build takes no\n"
+                " * patches at all, which is what a build made without the key\n"
+                " * should do.\n"
+                " */\n"
+                "final class Patchkey {\n\n"
+                "    private Patchkey() {}\n\n"
+                "    static final String KEY = \"%s\";\n"
+                "}\n" % key
+            )
+        self.detail("patches: %s" % ("signed with the key in %s" % path if key
+                                     else "refused, no key to check them with"))
 
     def write_theme(self, arsc: Arsc) -> None:
         """The colours TikTok repaints when its own theme changes."""

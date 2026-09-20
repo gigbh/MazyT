@@ -81,18 +81,44 @@ public final class M3Switch extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (event.getAction() == MotionEvent.ACTION_UP && isEnabled()) {
-            setChecked(!checked, true);
-            if (listener != null) listener.onChanged(checked);
-            performClick();
+        if (!isEnabled()) return super.onTouchEvent(event);
+        if (event.getAction() == MotionEvent.ACTION_DOWN) return true;
+        if (event.getAction() == MotionEvent.ACTION_UP) {
+            // a finger that wandered off the switch before lifting is not a
+            // tap on it, which is what dragging a page used to count as
+            float x = event.getX(), y = event.getY();
+            if (x >= 0 && y >= 0 && x <= getWidth() && y <= getHeight()) {
+                performClick();
+            }
             return true;
         }
         return super.onTouchEvent(event);
     }
 
+    /**
+     * The one place the switch changes, so everything that can press it works.
+     *
+     * TalkBack and a keyboard call this and never touch the screen; the toggle
+     * used to live in the touch handler, where neither of them could reach it.
+     */
     @Override
     public boolean performClick() {
-        return super.performClick();
+        setChecked(!checked, true);
+        if (listener != null) listener.onChanged(checked);
+        super.performClick();
+        return true;
+    }
+
+    @Override
+    public void onInitializeAccessibilityNodeInfo(
+            android.view.accessibility.AccessibilityNodeInfo info) {
+        super.onInitializeAccessibilityNodeInfo(info);
+        try {
+            info.setClassName(android.widget.Switch.class.getName());
+            info.setCheckable(true);
+            info.setChecked(checked);
+        } catch (Throwable ignored) {
+        }
     }
 
     @Override

@@ -109,6 +109,10 @@ public final class Feed {
         if (!(item instanceof Aweme)) return false;
         Aweme post = (Aweme) item;
         if (mine(post)) return false;
+        // a patch gets the first word: an ad TikTok started marking some other
+        // way is exactly the sort of thing that should not need a new apk
+        Object mended = Patch.ask("feed", post);
+        if (mended instanceof Boolean) return ((Boolean) mended).booleanValue();
         try {
             if (isEnabled() && post.isAd()) return true;
             if (hides(KEY_LIVE) && isLive(post)) return true;
@@ -152,7 +156,7 @@ public final class Feed {
     private static List without(List items) {
         if (items == null) return items;
         if (!isEnabled() && !hides(KEY_LIVE) && !hides(KEY_PHOTOS)
-                && Tags.all().isEmpty()) {
+                && Tags.all().isEmpty() && Patch.running().length() == 0) {
             return Plugins.feed(items);
         }
         try {

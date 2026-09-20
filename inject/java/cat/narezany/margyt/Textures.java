@@ -178,13 +178,20 @@ public final class Textures {
         return new Pack(zip.getName(), name, author, about, tiktok);
     }
 
-    /** Take a zip somebody picked and keep it. */
+    /**
+     * Take a zip somebody picked and keep it.
+     *
+     * Written beside the shelf first and moved onto it once it is known to be
+     * a pack: a half-written file, or a file that turns out to be a photo,
+     * used to sit there in the list being offered.
+     */
     public static boolean install(Context context, android.net.Uri uri) {
+        File out = null;
         try {
             File shelf = shelf(context);
             shelf.mkdirs();
             String name = "pack-" + System.currentTimeMillis() + KIND;
-            File out = new File(shelf, name);
+            out = new File(shelf, name + ".part");
 
             InputStream in = context.getContentResolver().openInputStream(uri);
             if (in == null) return false;
@@ -195,22 +202,36 @@ public final class Textures {
             sink.close();
             in.close();
 
-            // a zip that holds nothing the app asks for is not a texture pack
+            // a zip that holds nothing the app asks for is not a texture pack.
+            // Packs of assets alone are a thing the rest of this handles, so
+            // they count here too
             ZipFile test = new ZipFile(out);
             int pictures = 0;
             java.util.Enumeration<? extends ZipEntry> entries = test.entries();
             while (entries.hasMoreElements()) {
-                if (entries.nextElement().getName().startsWith("res/")) pictures++;
+                ZipEntry entry = entries.nextElement();
+                if (entry.isDirectory()) continue;
+                String where = entry.getName();
+                if (where.startsWith("res/") || where.startsWith("assets/")) pictures++;
             }
             test.close();
             if (pictures == 0) {
                 out.delete();
-                Diary.note("textures: nothing under res/ in that zip");
+                Diary.note("textures: nothing under res/ or assets/ in that zip");
                 return false;
             }
+
+            File kept = new File(shelf, name);
+            if (!out.renameTo(kept)) {
+                out.delete();
+                Diary.note("textures: could not put the pack on the shelf");
+                return false;
+            }
+            out = null;
             Diary.note("textures: " + name + " installed, " + pictures + " pictures");
             return true;
         } catch (Throwable error) {
+            if (out != null) out.delete();
             Diary.note("textures: " + error);
             return false;
         }

@@ -41,7 +41,10 @@ public final class Dim {
         Boolean known = on;
         if (known != null) return known.booleanValue();
         SharedPreferences prefs = prefs();
-        boolean value = prefs != null && prefs.getBoolean(KEY_ON, false);
+        // nothing to read yet means nothing to remember: writing "off" down
+        // here left the setting off for the rest of the run
+        if (prefs == null) return false;
+        boolean value = prefs.getBoolean(KEY_ON, false);
         on = Boolean.valueOf(value);
         return value;
     }
@@ -57,7 +60,8 @@ public final class Dim {
         int known = how;
         if (known >= 0) return known;
         SharedPreferences prefs = prefs();
-        int value = prefs == null ? DEFAULT : prefs.getInt(KEY_HOW, DEFAULT);
+        if (prefs == null) return DEFAULT;
+        int value = prefs.getInt(KEY_HOW, DEFAULT);
         how = Math.max(0, Math.min(90, value));
         return how;
     }
@@ -312,9 +316,15 @@ public final class Dim {
         }
     }
 
-    /** What was turned down and to what, so it can be put back exactly. */
+    /**
+     * What was turned down and to what, so it can be put back exactly.
+     *
+     * Wrapped, because `alphaFor` is called from wherever TikTok happens to
+     * set a brightness from, and a WeakHashMap read while another thread
+     * writes it is a crash in somebody else's app.
+     */
     private static final java.util.Map<View, Float> faded =
-            new java.util.WeakHashMap<View, Float>();
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<View, Float>());
 
     /**
      * Put back what the mod turned down, and only that.
@@ -326,15 +336,18 @@ public final class Dim {
      */
     private static void restore() {
         try {
-            for (java.util.Map.Entry<View, Float> entry : faded.entrySet()) {
-                View view = entry.getKey();
-                if (view == null) continue;
-                Float was = entry.getValue();
-                if (was != null && Math.abs(view.getAlpha() - was.floatValue()) < 0.001f) {
-                    view.setAlpha(1f);
+            synchronized (faded) {
+                for (java.util.Map.Entry<View, Float> entry : faded.entrySet()) {
+                    View view = entry.getKey();
+                    if (view == null) continue;
+                    Float was = entry.getValue();
+                    if (was != null
+                            && Math.abs(view.getAlpha() - was.floatValue()) < 0.001f) {
+                        view.setAlpha(1f);
+                    }
                 }
+                faded.clear();
             }
-            faded.clear();
         } catch (Throwable ignored) {
         }
     }
