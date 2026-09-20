@@ -59,19 +59,37 @@ public final class Hdr {
     // ------------------------------------------------------------ the window
 
 
+    /** Set on any window this has touched, so turning it off can undo it. */
+    private static volatile boolean touched;
+
+    /**
+     * Flatten HDR on this window, or leave the window alone.
+     *
+     * Leaving it alone is the point of the second half. Asking for
+     * COLOR_MODE_HDR when the setting is off is not "as it was": it puts the
+     * window into a mode TikTok never asked for, and every ordinary colour in
+     * it gets mapped through that -- which is why screens went pale and white
+     * came out tinted.
+     */
     public static void apply(Activity activity) {
         if (activity == null) return;
         try {
             Window window = activity.getWindow();
             if (window == null) return;
-            boolean flatten = isEnabled();
 
-            if (Build.VERSION.SDK_INT >= 35) {
-                // zero would mean "whatever you like", which is the opposite
-                window.setDesiredHdrHeadroom(flatten ? FLAT : 0f);
+            if (!isEnabled()) {
+                if (touched && Build.VERSION.SDK_INT >= 35) {
+                    // zero is "whatever you like", which is where it started
+                    window.setDesiredHdrHeadroom(0f);
+                }
+                return;
             }
-            window.setColorMode(flatten ? ActivityInfo.COLOR_MODE_DEFAULT
-                    : ActivityInfo.COLOR_MODE_HDR);
+
+            touched = true;
+            if (Build.VERSION.SDK_INT >= 35) {
+                window.setDesiredHdrHeadroom(FLAT);
+            }
+            window.setColorMode(ActivityInfo.COLOR_MODE_DEFAULT);
         } catch (Throwable error) {
             Diary.note("hdr: " + error);
         }

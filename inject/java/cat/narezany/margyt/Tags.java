@@ -22,6 +22,7 @@ import java.util.Locale;
 public final class Tags {
 
     static final String KEY = "blocked_tags";
+    static final String KEY_ON = "blocked_tags_on";
 
     /** Enough to keep the check cheap on every post in every page. */
     public static final int MOST = 40;
@@ -29,6 +30,31 @@ public final class Tags {
     private static volatile List<String> cached;
 
     private Tags() {}
+
+    private static volatile Boolean on;
+
+    /**
+     * Whether the filter is doing anything.
+     *
+     * On by default, because it does nothing at all until a tag is added, and
+     * the switch in the settings used to be drawn permanently on with nothing
+     * behind it.
+     */
+    public static boolean isEnabled() {
+        Boolean known = on;
+        if (known != null) return known.booleanValue();
+        SharedPreferences prefs = prefs();
+        if (prefs == null) return true;
+        boolean value = prefs.getBoolean(KEY_ON, true);
+        on = Boolean.valueOf(value);
+        return value;
+    }
+
+    public static void setEnabled(boolean enabled) {
+        on = Boolean.valueOf(enabled);
+        SharedPreferences prefs = prefs();
+        if (prefs != null) prefs.edit().putBoolean(KEY_ON, enabled).apply();
+    }
 
     public static List<String> all() {
         List<String> known = cached;
@@ -82,6 +108,7 @@ public final class Tags {
 
     /** Whether this post carries one of them. */
     public static boolean blocks(Aweme post) {
+        if (!isEnabled()) return false;
         List<String> tags = all();
         if (tags.isEmpty()) return false;
         try {

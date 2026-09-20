@@ -86,7 +86,11 @@ public final class Fonts {
         String known = chosen;
         if (known != null) return known;
         SharedPreferences prefs = prefs();
-        String value = prefs == null ? SYSTEM : prefs.getString(KEY, SYSTEM);
+        // before the app has a context there is nothing to read, and writing
+        // "the phone's own" down as the answer meant the chosen font never
+        // arrived for the rest of the run
+        if (prefs == null) return SYSTEM;
+        String value = prefs.getString(KEY, SYSTEM);
         chosen = value;
         return value;
     }
@@ -103,7 +107,8 @@ public final class Fonts {
         String known = chosenEmoji;
         if (known != null) return known;
         SharedPreferences prefs = prefs();
-        String value = prefs == null ? SYSTEM : prefs.getString(KEY_EMOJI, SYSTEM);
+        if (prefs == null) return SYSTEM;
+        String value = prefs.getString(KEY_EMOJI, SYSTEM);
         chosenEmoji = value;
         return value;
     }
@@ -199,10 +204,12 @@ public final class Fonts {
     // ----------------------------------------------------------- using it
 
     /** The chosen typeface, or null to leave whatever was there alone. */
-    public static Typeface chosenFace() {
+    public static synchronized Typeface chosenFace() {
         if (looked) return face;
-        looked = true;
+        // built under the lock and only then called built: the flag used to
+        // go up first, so whatever asked next was handed nothing
         face = build();
+        looked = true;
         return face;
     }
 

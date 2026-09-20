@@ -278,7 +278,7 @@ public class SettingsActivity extends Activity {
 
         column.addView(section(Text.TAGS));
         LinearLayout tags = card();
-        tags.addView(betaRow("tag", Text.TAGS, true, on -> {}));
+        tags.addView(betaRow("tag", Text.TAGS, Tags.isEnabled(), Tags::setEnabled));
         java.util.List<String> blocked = Tags.all();
         if (blocked.isEmpty()) {
             tags.addView(caption(Text.TAGS_NONE));
@@ -2475,10 +2475,22 @@ public class SettingsActivity extends Activity {
         return brightness > 150 ? 0xFF1C2C24 : 0xFFFFFFFF;
     }
 
+    /**
+     * How much of the bottom belongs to the system, keyboard excluded.
+     *
+     * The system window inset counts the keyboard as well, so a rebuild while
+     * one was up -- adding a hashtag, say -- padded the restart bar by the
+     * height of the keyboard and turned it into half a screen.
+     */
     private int navigationBar() {
         try {
             android.view.WindowInsets insets = getWindow().getDecorView().getRootWindowInsets();
-            if (insets != null) return insets.getSystemWindowInsetBottom();
+            if (insets == null) return 0;
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                return insets.getInsets(
+                        android.view.WindowInsets.Type.navigationBars()).bottom;
+            }
+            return insets.getStableInsetBottom();
         } catch (Throwable ignored) {
         }
         return 0;
@@ -2487,9 +2499,14 @@ public class SettingsActivity extends Activity {
     private int statusBar() {
         try {
             android.view.WindowInsets insets = getWindow().getDecorView().getRootWindowInsets();
-            if (insets != null && insets.getSystemWindowInsetTop() > 0) {
-                return insets.getSystemWindowInsetTop();
+            int top = 0;
+            if (insets != null) {
+                top = android.os.Build.VERSION.SDK_INT >= 30
+                        ? insets.getInsets(
+                                android.view.WindowInsets.Type.statusBars()).top
+                        : insets.getStableInsetTop();
             }
+            if (top > 0) return top;
         } catch (Throwable ignored) {
         }
         int id = getResources().getIdentifier("status_bar_height", "dimen", "android");

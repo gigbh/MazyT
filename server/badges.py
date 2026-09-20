@@ -101,11 +101,12 @@ PROOF_TRIES = 15
 #: of one somebody asked for half an hour ago
 PROOF_SPARE = 10 * 60
 
-#: how many checks may read TikTok in a minute, all callers together. Each
-#: one costs two requests: the name behind an id, and the page itself.
+#: how many checks may read TikTok in a minute, all callers together. A name
+#: is remembered once it is known, so a check usually costs one request.
 #: Per-address limits are nginx's job; this one is about TikTok's patience
-#: with this address, which the bot depends on as well.
-PROOF_READS = 20
+#: with this address, which the bot depends on as well. Twenty was too mean
+#: on an evening when everybody was proving an account at once.
+PROOF_READS = 60
 
 
 # --------------------------------------------------------------- the store
@@ -469,6 +470,9 @@ def prove_check(body, ip):
         return 503, {"error": "too many at once, try again in a minute"}
 
     found = tiktok.name_of(uid)
+    if not found:
+        time.sleep(1.0)
+        found = tiktok.name_of(uid)
     if found:
         name = found
     if not tiktok.named(name):

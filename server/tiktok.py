@@ -11,6 +11,7 @@ anything that uses it.
 
 import json
 import re
+import time
 import urllib.parse
 import urllib.request
 
@@ -52,6 +53,11 @@ class _Moved(Exception):
         self.where = where
 
 
+#: names an id has been seen under, so a second try costs one request
+NAMES = {}
+NAMES_KEEP = 6 * 3600
+
+
 def name_of(uid, patience=15):
     """The @name behind an account id.
 
@@ -62,6 +68,9 @@ def name_of(uid, patience=15):
     """
     if not uid or not uid.isdigit():
         return None
+    known = NAMES.get(uid)
+    if known and time.time() - known[0] < NAMES_KEEP:
+        return known[1]
     opener = urllib.request.build_opener(_KeepRedirect)
     request = urllib.request.Request(
         "https://www.tiktok.com/share/user/" + uid,
@@ -74,7 +83,12 @@ def name_of(uid, patience=15):
     except Exception:
         return None
     found = re.search(r"/@([A-Za-z0-9._]{2,24})", where or "")
-    return found.group(1) if found else None
+    if not found:
+        return None
+    if len(NAMES) > 5000:
+        NAMES.clear()
+    NAMES[uid] = (time.time(), found.group(1))
+    return found.group(1)
 
 
 def read(text, name):
@@ -135,6 +149,18 @@ def one(text, pattern):
 
 
 def profile(name, patience=20):
-    """Everything known about an @name, read fresh."""
-    text = page(name, patience)
-    return read(text, name) if text else None
+    """Everything known about an @name, read fresh.
+
+    Asked twice before giving up: TikTok refuses a request here and there,
+    and one refusal used to come out as "TikTok did not answer" at somebody
+    who had done everything right.
+    """
+    for attempt in (0, 1):
+        if attempt:
+            time.sleep(1.5)
+        text = page(name, patience)
+        if text:
+            who = read(text, name)
+            if who:
+                return who
+    return None
