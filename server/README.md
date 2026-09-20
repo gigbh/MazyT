@@ -1,4 +1,4 @@
-![Dream mod wallahi](server/shit.png)
+<img src="server/shit.png" alt="Dream mod wallahi">
 
 
 
