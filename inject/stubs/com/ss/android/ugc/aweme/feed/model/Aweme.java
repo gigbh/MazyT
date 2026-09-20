@@ -23,7 +23,9 @@ public class Aweme {
         throw new UnsupportedOperationException("stub");
     }
 
-    public Object getRoomFeedCellStruct() {
+    /** Set on a post that stands for a live room rather than a video. */
+    public com.ss.android.ugc.aweme.feed.model.live.RoomFeedCellStruct
+            getRoomFeedCellStruct() {
         throw new UnsupportedOperationException("stub");
     }
 

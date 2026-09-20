@@ -234,7 +234,7 @@ public static final String KEY = "badges_on";
 
         byte[] cached = Net.read(file(context));
         if (cached != null) {
-            apply(cached);
+            apply(cached, false);
             prefetch(context);
         }
 
@@ -269,7 +269,7 @@ public static final String KEY = "badges_on";
                 if (said == null || said.unchanged) return;
                 tag = said.tag;
                 if (said.body == null) return;
-                if (apply(said.body)) {
+                if (apply(said.body, true)) {
                     Net.save(file(context), said.body);
                     prefetch(context);
                     Diary.note("badges: " + known.size() + " accounts, "
@@ -333,14 +333,21 @@ public static final String KEY = "badges_on";
         }
     }
 
-    private static boolean apply(byte[] json) {
+    /**
+     * Read a list of badges. `live` says whether it just came from the server.
+     *
+     * The server's own clock only counts when it is fresh: taken off a file
+     * written days ago it said the free badge was still being given out long
+     * after it was not.
+     */
+    private static boolean apply(byte[] json, boolean live) {
         try {
             JSONObject root = new JSONObject(new String(json, "UTF-8"));
             JSONArray list = root.optJSONArray("badges");
             if (list == null) return false;
             long until = root.optLong("free_until", 0);
             long now = root.optLong("now", 0);
-            if (until > 0 && now > 0) {
+            if (live && until > 0 && now > 0) {
                 freeUntil = until;
                 serverNow = now;
                 readAt = android.os.SystemClock.elapsedRealtime();
@@ -422,23 +429,43 @@ public static final String KEY = "badges_on";
 
     private static final Map<String, Bitmap> pictures = new HashMap<String, Bitmap>();
 
+    /** When each picture was last asked for, so a failure is not forever. */
+    private static final Map<String, Long> asked = new HashMap<String, Long>();
+
+    /** How long a picture that did not arrive is left alone. */
+    private static final long AGAIN = 60000;
+
     /**
      * The picture a badge names, or null for the mod's own note.
      *
      * Answers from memory or from the cache on disk, and never waits: a
      * picture that is not here yet is fetched on a thread, and the badge draws
      * the note until the next time it is drawn.
+     *
+     * A fetch that fails is tried again a minute later rather than never: the
+     * marker used to say "asked for" and nothing ever took it off, so one bad
+     * minute of network left a badge as a note until the app was restarted.
      */
     public static Bitmap picture(final Context context, final String path) {
         if (path == null || path.length() == 0) return null;
+        long now = android.os.SystemClock.elapsedRealtime();
         synchronized (pictures) {
-            if (pictures.containsKey(path)) return pictures.get(path);
-            pictures.put(path, null);  // asked for; do not ask again
+            Bitmap known = pictures.get(path);
+            if (known != null) return known;
+            Long when = asked.get(path);
+            if (when != null && now - when.longValue() < AGAIN) return null;
+            asked.put(path, Long.valueOf(now));
         }
 
         final File cache = new File(context.getFilesDir(), "margyt/badges/" + name(path));
         byte[] have = Net.read(cache);
-        if (have != null) return remember(path, have);
+        if (have != null) {
+            Bitmap drawn = remember(path, have);
+            if (drawn != null) return drawn;
+            // a cached file that will not decode is not a picture, and keeping
+            // it meant the real one was never fetched again
+            cache.delete();
+        }
 
         Net.away("badge picture", new Runnable() {
             @Override

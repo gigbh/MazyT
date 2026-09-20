@@ -39,6 +39,9 @@ public final class Updater {
 
     public static final String KEY_REMIND = "update_remind";
 
+    /** Which version the apk sitting in files/ is, so it can be thrown away. */
+    private static final String KEY_GOT = "update_got";
+
     private static final long EVERY = 5 * 60 * 1000L;
 
     private static volatile String latest;
@@ -54,6 +57,7 @@ public final class Updater {
     public static synchronized void start(final Context context) {
         if (started) return;
         started = true;
+        tidy(context);
 
         final Handler handler = new Handler(Looper.getMainLooper());
         final Context application = context.getApplicationContext();
@@ -219,7 +223,13 @@ public final class Updater {
                 Screen.progressGone();
                 if (!done) {
                     Screen.say(Text.UPDATE_FAILED);
+                    apk.delete();
                     return;
+                }
+                try {
+                    context.getSharedPreferences(Margy.PREFS, Context.MODE_PRIVATE)
+                            .edit().putString(KEY_GOT, latest()).apply();
+                } catch (Throwable ignored) {
                 }
                 install(context);
             }
@@ -308,6 +318,41 @@ public final class Updater {
     /** Whether an apk is already waiting, so the settings can offer to put it on. */
     public static boolean waiting(Context context) {
         File apk = file(context);
-        return apk.isFile() && apk.length() > 0;
+        return apk.isFile() && apk.length() > 0 && ahead(context);
+    }
+
+    /** The version of the waiting apk, as it was when it came down. */
+    private static String got(Context context) {
+        try {
+            return context.getSharedPreferences(Margy.PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_GOT, "");
+        } catch (Throwable ignored) {
+            return "";
+        }
+    }
+
+    private static boolean ahead(Context context) {
+        String which = got(context);
+        return which.length() > 0 && compare(which, Version.MOD) > 0;
+    }
+
+    /**
+     * Throw away an update that has already been installed.
+     *
+     * It is a third of a gigabyte inside the app's own files. Nothing ever
+     * deleted it, so it sat there for good and the settings went on offering
+     * to install the version that was already running.
+     */
+    static void tidy(Context context) {
+        try {
+            File apk = file(context);
+            if (!apk.isFile()) return;
+            if (ahead(context)) return;
+            if (apk.delete()) Diary.note("update: the old download is gone");
+            context.getSharedPreferences(Margy.PREFS, Context.MODE_PRIVATE)
+                    .edit().remove(KEY_GOT).apply();
+        } catch (Throwable error) {
+            Diary.note("update: " + error);
+        }
     }
 }

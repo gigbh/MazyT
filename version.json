@@ -1,8 +1,8 @@
 {
-  "_comment": "What the app checks to know whether it is out of date. It reads this from the repository at startup and every five minutes, the same way it reads badges.json.",
-  "version": "0.22",
-  "url": "https://github.com/narezany/MargyT/releases/download/v0.22/margyt.apk",
-  "notes": "Texture packs, badges that live on a server and that you arrange yourself, a plugin store, the date on every video, and buttons that fade so they cannot burn in.",
-  "notes_ru": "Текстурпаки, значки на сервере и с настройкой своего профиля, магазин плагинов, дата под каждым видео и приглушение кнопок от выгорания.",
-  "notes_uk": "Текстурпаки, значки на сервері та з налаштуванням свого профілю, магазин плагінів, дата під кожним відео та приглушення кнопок від вигоряння."
+  "_comment": "What the app checks to know whether it is out of date. It reads this from the repository at startup and every five minutes; the badges themselves come from the server.",
+  "version": "0.23",
+  "url": "https://github.com/narezany/MargyT/releases/download/v0.23/margyt.apk",
+  "notes": "Prove an account is yours with a code in your bio, so nobody else can touch your badges. Gradient names and profile banners for supporters, a hashtag filter, an fps lock, HDR off, and a faster profile.",
+  "notes_ru": "Подтверждение аккаунта кодом в описании профиля, чтобы твои значки не трогал никто чужой. Градиентные ники и баннеры профиля для поддержавших, фильтр хештегов, ограничение fps, выключение HDR и профиль без фризов.",
+  "notes_uk": "Підтвердження акаунта кодом в описі профілю, щоб твої значки не чіпав ніхто чужий. Градієнтні ніки та банери профілю для тих, хто підтримав, фільтр хештегів, обмеження fps, вимкнення HDR і профіль без фризів."
 }

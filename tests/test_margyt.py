@@ -314,12 +314,15 @@ class PngTest(unittest.TestCase):
     def test_the_master_is_what_it_claims(self):
         self.assertEqual((self.master.width, self.master.height), (512, 512))
 
-    def test_resizing_keeps_the_corner_mint(self):
+    def test_resizing_keeps_the_ground_mint(self):
+        """The corner is rounded away now, so the ground is read inside it."""
         for size in (48, 56, 192):
             small = self.master.resized(size)
             self.assertEqual(small.width, size)
-            corner = tuple(small.pixels[:4])
-            self.assertEqual(corner, (0x8D, 0xD1, 0xB0, 0xFF))
+            at = ((size // 8) * size + size // 2) * 4
+            self.assertEqual(tuple(small.pixels[at:at + 4]),
+                             (0x8D, 0xD1, 0xB0, 0xFF))
+            self.assertEqual(small.pixels[3], 0)   # and the corner is gone
 
     def test_encode_decode_is_lossless(self):
         small = self.master.resized(32)
@@ -384,7 +387,10 @@ class IconTest(unittest.TestCase):
         for path, size in sizes_before.items():
             self.assertEqual(png.size_of(self.apk.read(path)), size)
             image = png.decode(self.apk.read(path))
-            self.assertEqual(tuple(image.pixels[:4]), (0x8D, 0xD1, 0xB0, 0xFF))
+            # the ground rather than the corner: the master is rounded
+            at = ((image.height // 8) * image.width + image.width // 2) * 4
+            self.assertEqual(tuple(image.pixels[at:at + 4]),
+                             (0x8D, 0xD1, 0xB0, 0xFF))
 
         # the adaptive icon still points where it did; its layers are ours now
         adaptive = Axml.parse(self.apk.read("res/mipmap-anydpi-v26/ic_app.xml"))
@@ -755,6 +761,27 @@ class PaletteTest(unittest.TestCase):
         self.assertIn("HUE = %gf" % palette.HUE, java)
         self.assertIn("MIN_SATURATION = %gf" % palette.MIN_SATURATION, java)
         self.assertIn("MIN_VALUE = %gf" % palette.MIN_VALUE, java)
+
+
+class TheIconsKeepTheirPlaces(unittest.TestCase):
+    """A launcher alias is named by its place in the list, so places are kept.
+
+    Somebody who picked an icon has a component name saved on their phone,
+    `cat.narezany.margyt.Icon<index>`. Insert an icon in the middle and that
+    name means a different picture; remove one and the entry vanishes from the
+    home screen. New icons go on the end, and this says so out loud.
+    """
+
+    SHIPPED = [
+        "grafiti", "shine", "tiktok", "materialyou", "material3", "doodle",
+        "glitch", "google", "dotted", "terminal", "yaai", "deltamargyt",
+        "mteam", "deled", "margytcraft", "tigr", "govno", "glamour",
+    ]
+
+    def test_every_icon_that_shipped_is_where_it_was(self):
+        from margyt.build import Build
+        keys = [key for key, _label in Build.ICONS]
+        self.assertEqual(keys[:len(self.SHIPPED)], self.SHIPPED)
 
 
 if __name__ == "__main__":

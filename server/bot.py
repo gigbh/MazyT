@@ -62,15 +62,19 @@ def prepare():
 
 
 def badges_of(uid):
-    """Which badges an account wears, in its own order."""
+    """Which badges an account wears, in its own order.
+
+    Only the ones it shows. Somebody who turned a badge off turned it off for
+    everybody, and answering here with the full list, helpfully marked
+    "скрыт", handed it back out again.
+    """
     db = service.connect()
     rows = db.execute(
-        "SELECT b.id, b.text_ru, b.text, h.shown FROM held h"
-        " JOIN badge b ON b.id = h.badge WHERE h.uid = ?"
+        "SELECT b.id, b.text_ru, b.text FROM held h"
+        " JOIN badge b ON b.id = h.badge WHERE h.uid = ? AND h.shown = 1"
         " ORDER BY h.place, h.badge", (uid,)).fetchall()
     db.close()
-    return [{"id": r[0], "text": r[1] or r[2] or r[0], "shown": bool(r[3])}
-            for r in rows]
+    return [{"id": r[0], "text": r[1] or r[2] or r[0]} for r in rows]
 
 
 # ------------------------------------------------------------ looking up
@@ -92,6 +96,25 @@ def account(which, patience=20):
 SEEN = {}
 KEEPS = 300
 FORGETS = 60
+
+#: as many names as are worth keeping at once
+MANY = 2000
+
+
+def keep(name, who):
+    """Remember a lookup, and throw out what has gone stale.
+
+    An inline search asks on every key pressed, so this fills with half-typed
+    names; nothing here ever emptied it.
+    """
+    now = time.time()
+    SEEN[name] = (now, who)
+    if len(SEEN) > MANY:
+        for older in [key for key, (when, found) in SEEN.items()
+                      if now - when > (KEEPS if found else FORGETS)]:
+            SEEN.pop(older, None)
+    while len(SEEN) > MANY:
+        SEEN.pop(next(iter(SEEN)), None)
 
 
 def remembered(name):
@@ -128,7 +151,7 @@ def by_name(name, patience=20):
         return None
 
     who = read_profile(page, name)
-    SEEN[name.lower()] = (time.time(), who)
+    keep(name.lower(), who)
     return who
 
 
@@ -196,8 +219,7 @@ def badge_lines(uid):
         return "Значков нет."
     out = []
     for badge in worn:
-        mark = "" if badge["shown"] else "  (скрыт)"
-        out.append("• %s%s" % (badge["text"], mark))
+        out.append("• %s" % html.escape(badge["text"]))
     return "\n".join(out)
 
 

@@ -515,8 +515,10 @@ class Build:
     def add_icon_choices(self, apk: Apk, arsc: Arsc, manifest: Axml):
         """Put the icons in the apk, in the table, and in the manifest."""
         entry, target = manifest_module.launcher_entry(manifest)
-        # the aliases take the app's own name; only the picture differs
-        label = "TikTok"
+        # the aliases take the app's own name; only the picture differs. It
+        # said TikTok here, so picking any icon but the first also renamed the
+        # thing on the home screen
+        label = LABEL
 
         names = []
         for index, (key, _label) in enumerate(self.ICONS):
