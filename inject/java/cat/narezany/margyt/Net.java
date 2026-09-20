@@ -135,8 +135,74 @@ public final class Net {
         }
     }
 
+    /** What a request came back with, when the refusal itself matters. */
+    public static final class Said {
+        public final int code;
+        public final String body;
+
+        Said(int code, String body) {
+            this.code = code;
+            this.body = body;
+        }
+
+        public boolean ok() {
+            return code == 200;
+        }
+    }
+
+    /**
+     * Send json and keep the answer whatever it was.
+     *
+     * `post` throws refusals away, which is right for saving a setting and
+     * wrong for proving an account: "the code is not in your bio yet" and
+     * "tiktok did not answer" need different things said to the person.
+     */
+    public static Said talk(String url, String json) {
+        java.net.HttpURLConnection link = null;
+        try {
+            link = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            link.setConnectTimeout(15000);
+            link.setReadTimeout(40000);
+            link.setRequestMethod("POST");
+            link.setDoOutput(true);
+            link.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            link.setRequestProperty("User-Agent", "MargyT");
+
+            byte[] body = json.getBytes("UTF-8");
+            link.setFixedLengthStreamingMode(body.length);
+            java.io.OutputStream out = link.getOutputStream();
+            out.write(body);
+            out.close();
+
+            int code = link.getResponseCode();
+            java.io.InputStream in = code >= 400 ? link.getErrorStream()
+                    : link.getInputStream();
+            String said = "";
+            if (in != null) {
+                java.io.ByteArrayOutputStream read = new java.io.ByteArrayOutputStream();
+                byte[] buffer = new byte[8192];
+                int got;
+                while ((got = in.read(buffer)) > 0) read.write(buffer, 0, got);
+                in.close();
+                said = new String(read.toByteArray(), "UTF-8");
+            }
+            return new Said(code, said);
+        } catch (Throwable error) {
+            Diary.note("talk: " + error);
+            return new Said(0, "");
+        } finally {
+            if (link != null) link.disconnect();
+        }
+    }
+
     /** A POST whose body is the thing itself, not json wrapped around it. */
     public static String send(String url, String kind, byte[] body) {
+        Said said = deliver(url, kind, body);
+        return said.ok() ? said.body : null;
+    }
+
+    /** The same, keeping the refusal for whoever has to explain it. */
+    public static Said deliver(String url, String kind, byte[] body) {
         java.net.HttpURLConnection link = null;
         try {
             link = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
@@ -153,17 +219,17 @@ public final class Net {
 
             int code = link.getResponseCode();
             java.io.InputStream in = code >= 400 ? link.getErrorStream() : link.getInputStream();
-            if (in == null) return null;
             java.io.ByteArrayOutputStream read = new java.io.ByteArrayOutputStream();
-            byte[] buffer = new byte[8192];
-            int got;
-            while ((got = in.read(buffer)) > 0) read.write(buffer, 0, got);
-            in.close();
-            String said = new String(read.toByteArray(), "UTF-8");
-            return code >= 400 ? null : said;
+            if (in != null) {
+                byte[] buffer = new byte[8192];
+                int got;
+                while ((got = in.read(buffer)) > 0) read.write(buffer, 0, got);
+                in.close();
+            }
+            return new Said(code, new String(read.toByteArray(), "UTF-8"));
         } catch (Throwable error) {
             Diary.note("net: " + error);
-            return null;
+            return new Said(0, "");
         } finally {
             if (link != null) link.disconnect();
         }

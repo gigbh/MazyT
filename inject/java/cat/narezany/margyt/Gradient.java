@@ -53,7 +53,7 @@ public final class Gradient {
         final String uid = Account.id();
         final String token = Mine.token();
         if (uid == null || token.length() == 0) {
-            if (then != null) then.said(false, Text.GRADIENT_NO_ACCOUNT);
+            if (then != null) then.said(false, Mine.PROVE);
             return;
         }
         Net.away("gradient: save", new Runnable() {
@@ -64,14 +64,15 @@ public final class Gradient {
                 try {
                     JSONArray list = new JSONArray();
                     for (Integer colour : colours) list.put(hex(colour));
-                    String said = Net.post(Badges.SERVER + "/gradient",
+                    Net.Said said = Net.talk(Badges.SERVER + "/gradient",
                             new JSONObject().put("uid", uid).put("token", token)
                                     .put("colours", list).toString());
-                    if (said != null) {
+                    if (said.ok()) {
                         ok = true;
                         Badges.refresh();
                     } else {
-                        trouble = Text.GRADIENT_REFUSED;
+                        trouble = Mine.asksForProof(said)
+                                ? Mine.PROVE : Text.GRADIENT_REFUSED;
                     }
                 } catch (Throwable error) {
                     trouble = String.valueOf(error);
@@ -87,23 +88,25 @@ public final class Gradient {
         final String uid = Account.id();
         final String token = Mine.token();
         if (uid == null || token.length() == 0) {
-            if (then != null) then.said(false, Text.GRADIENT_NO_ACCOUNT);
+            if (then != null) then.said(false, Mine.PROVE);
             return;
         }
         Net.away("gradient: drop", new Runnable() {
             @Override
             public void run() {
                 boolean ok = false;
+                String trouble = Text.GRADIENT_REFUSED;
                 try {
-                    String said = Net.post(Badges.SERVER + "/gradient",
+                    Net.Said said = Net.talk(Badges.SERVER + "/gradient",
                             new JSONObject().put("uid", uid).put("token", token)
                                     .toString());
-                    ok = said != null;
+                    ok = said.ok();
                     if (ok) Badges.refresh();
+                    else if (Mine.asksForProof(said)) trouble = Mine.PROVE;
                 } catch (Throwable error) {
                     Diary.note("gradient: " + error);
                 }
-                answer(then, ok, ok ? "" : Text.GRADIENT_REFUSED);
+                answer(then, ok, ok ? "" : trouble);
             }
         });
     }

@@ -17,11 +17,11 @@ import java.util.List;
  * the order their owner wants, and that choice is what everybody else sees --
  * so it has to live on the server rather than on the phone that made it.
  *
- * On authentication, plainly: there is none, and there cannot be. TikTok will
- * not tell a third party that somebody is who they say they are. So the first
- * phone to claim an account id is given a key for it and keeps it; that is
- * enough to stop a passer-by rearranging somebody else's badges, and not
- * enough to stop somebody determined. It is a picture beside a name.
+ * On authentication: the key comes from `Proof` and nowhere else. A code goes
+ * into the account's own bio, the server reads the page and sees it there,
+ * and only then is a key handed over. Asking used to be enough, which lasted
+ * until somebody wrote a loop and handed the free badge to accounts that had
+ * never run the mod.
  *
  * What the server does not trust is anything that decides what is given: which
  * badge the free one is, whether the day for it has passed, and how often
@@ -93,7 +93,8 @@ public final class Mine {
         return prefs.getString(KEY_TOKEN, "");
     }
 
-    private static void keep(String uid, String token) {
+    /** The key, and only from `Proof`: nothing else is given one. */
+    static void gotKey(String uid, String token) {
         SharedPreferences prefs = prefs();
         if (prefs != null) {
             prefs.edit().putString(KEY_UID, uid).putString(KEY_TOKEN, token).apply();
@@ -101,7 +102,7 @@ public final class Mine {
     }
 
     /**
-     * Say which account this is and get the key back, then read what it holds.
+     * Ask what this account holds, and whether it has proved it is anybody's.
      *
      * Done once when the settings are opened rather than at start-up: it is
      * the only screen that can do anything with the answer, and an account id
@@ -118,7 +119,7 @@ public final class Mine {
                             new JSONObject().put("uid", uid).toString());
                     if (said == null) return;
                     JSONObject answer = new JSONObject(said);
-                    keep(uid, answer.optString("token", ""));
+                    Proof.heard(answer.optBoolean("proved", false));
                     read(answer);
                     asked = true;
                     fresh = true;
@@ -137,7 +138,7 @@ public final class Mine {
         return asked;
     }
 
-    private static void read(JSONObject answer) {
+    static void read(JSONObject answer) {
         JSONArray list = answer.optJSONArray("badges");
         if (list == null) return;
         List<Held> built = new ArrayList<Held>();
@@ -156,7 +157,7 @@ public final class Mine {
         final String uid = Account.id();
         final String token = token();
         if (uid == null || token.length() == 0) {
-            if (then != null) then.said(false, "");
+            if (then != null) then.said(false, PROVE);
             return;
         }
         Net.away("badges: save", new Runnable() {
@@ -171,13 +172,15 @@ public final class Mine {
                         places.put(one.id);
                         if (!one.shown) hidden.put(one.id);
                     }
-                    String said = Net.post(Badges.SERVER + "/profile",
+                    Net.Said said = Net.talk(Badges.SERVER + "/profile",
                             new JSONObject().put("uid", uid).put("token", token)
                                     .put("order", places).put("hidden", hidden)
                                     .toString());
-                    if (said != null) {
-                        read(new JSONObject(said));
+                    if (said.ok()) {
+                        read(new JSONObject(said.body));
                         ok = true;
+                    } else if (asksForProof(said)) {
+                        trouble = PROVE;
                     }
                 } catch (Throwable error) {
                     trouble = String.valueOf(error);
@@ -188,30 +191,54 @@ public final class Mine {
         });
     }
 
+    /**
+     * What a refusal means when the server wants the account proved.
+     *
+     * Handed back as a word rather than a number so the screen can open the
+     * proving card instead of saying "that did not work" at somebody who has
+     * done nothing wrong.
+     */
+    public static final String PROVE = "prove";
+
+    static boolean asksForProof(Net.Said said) {
+        try {
+            if (said.code == 403
+                    && PROVE.equals(new JSONObject(said.body).optString("error", ""))) {
+                Proof.lost();
+                return true;
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
     /** Take the badge that is free until the day it is not. */
     public static void takeFree(final Said then) {
         final String uid = Account.id();
         final String token = token();
         if (uid == null || token.length() == 0) {
-            if (then != null) then.said(false, "");
+            if (then != null) then.said(false, PROVE);
             return;
         }
         Net.away("badges: free", new Runnable() {
             @Override
             public void run() {
                 boolean ok = false;
+                String trouble = "";
                 try {
-                    String said = Net.post(Badges.SERVER + "/old",
+                    Net.Said said = Net.talk(Badges.SERVER + "/old",
                             new JSONObject().put("uid", uid).put("token", token)
                                     .toString());
-                    if (said != null) {
-                        read(new JSONObject(said));
+                    if (said.ok()) {
+                        read(new JSONObject(said.body));
                         ok = true;
+                    } else if (asksForProof(said)) {
+                        trouble = PROVE;
                     }
                 } catch (Throwable error) {
                     Diary.note("badges: free -- " + error);
                 }
-                answer(then, ok, "");
+                answer(then, ok, trouble);
             }
         });
     }

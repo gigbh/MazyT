@@ -51,7 +51,7 @@ public final class Banner {
         final String uid = Account.id();
         final String token = Mine.token();
         if (uid == null || token.length() == 0) {
-            if (then != null) then.said(false, Text.GRADIENT_NO_ACCOUNT);
+            if (then != null) then.said(false, Mine.PROVE);
             return;
         }
         Net.away("banner: send", new Runnable() {
@@ -68,11 +68,13 @@ public final class Banner {
                     } else if (blob.length > MOST) {
                         trouble = Text.BANNER_TOO_BIG;
                     } else {
-                        String said = Net.send(Badges.SERVER + "/banner?uid=" + uid
-                                + "&token=" + token, kind, blob);
-                        if (said != null) {
+                        Net.Said said = Net.deliver(Badges.SERVER + "/banner?uid="
+                                + uid + "&token=" + token, kind, blob);
+                        if (said.ok()) {
                             ok = true;
                             Badges.refresh();
+                        } else if (Mine.asksForProof(said)) {
+                            trouble = Mine.PROVE;
                         }
                     }
                 } catch (Throwable error) {
@@ -87,17 +89,18 @@ public final class Banner {
         final String uid = Account.id();
         final String token = Mine.token();
         if (uid == null || token.length() == 0) {
-            if (then != null) then.said(false, Text.GRADIENT_NO_ACCOUNT);
+            if (then != null) then.said(false, Mine.PROVE);
             return;
         }
         Net.away("banner: drop", new Runnable() {
             @Override
             public void run() {
-                String said = Net.send(Badges.SERVER + "/banner?uid=" + uid
+                Net.Said said = Net.deliver(Badges.SERVER + "/banner?uid=" + uid
                         + "&token=" + token, "image/jpeg", new byte[0]);
-                boolean ok = said != null;
+                boolean ok = said.ok();
                 if (ok) Badges.refresh();
-                answer(then, ok, ok ? "" : Text.BANNER_REFUSED);
+                answer(then, ok, ok ? "" : Mine.asksForProof(said)
+                        ? Mine.PROVE : Text.BANNER_REFUSED);
             }
         });
     }
@@ -182,23 +185,25 @@ public final class Banner {
         final String uid = Account.id();
         final String token = Mine.token();
         if (uid == null || token.length() == 0) {
-            if (then != null) then.said(false, Text.GRADIENT_NO_ACCOUNT);
+            if (then != null) then.said(false, Mine.PROVE);
             return;
         }
         Net.away("banner: dim", new Runnable() {
             @Override
             public void run() {
                 boolean ok = false;
+                String trouble = Text.BANNER_REFUSED;
                 try {
-                    String said = Net.post(Badges.SERVER + "/shade",
+                    Net.Said said = Net.talk(Badges.SERVER + "/shade",
                             new org.json.JSONObject().put("uid", uid).put("token", token)
                                     .put("dim", Math.max(0, Math.min(90, how))).toString());
-                    ok = said != null;
+                    ok = said.ok();
                     if (ok) Badges.refresh();
+                    else if (Mine.asksForProof(said)) trouble = Mine.PROVE;
                 } catch (Throwable error) {
                     Diary.note("banner: " + error);
                 }
-                answer(then, ok, ok ? "" : Text.BANNER_REFUSED);
+                answer(then, ok, ok ? "" : trouble);
             }
         });
     }

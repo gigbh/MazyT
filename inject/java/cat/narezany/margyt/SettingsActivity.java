@@ -708,6 +708,7 @@ public class SettingsActivity extends Activity {
         // this that empty answer is what stayed on screen
         if (Mine.tookFresh()) ordering = null;
         if (ordering == null) ordering = Mine.held();
+        rows.addView(proveRow());
         if (ordering.isEmpty()) {
             rows.addView(quiet(Mine.everAsked() ? Text.MINE_NONE : Text.MINE_WAIT));
             return rows;
@@ -755,11 +756,71 @@ public class SettingsActivity extends Activity {
 
         rows.addView(button(Text.MINE_SAVE, () -> Mine.save(ordering,
                 (ok, trouble) -> {
+                    if (needsProof(ok, trouble)) return;
                     Screen.say(ok ? Text.MINE_SAVED : Text.MINE_TOO_OFTEN);
                     ordering = null;
                     rebuild();
                 })));
         return rows;
+    }
+
+    /**
+     * Whether this account has proved it is anybody's, and the way to do it.
+     *
+     * At the head of the badge list because nothing under it saves until this
+     * is done, and because the reason is worth seeing once.
+     */
+    private View proveRow() {
+        boolean done = Proof.proved();
+        LinearLayout row = row();
+        row.setPadding(dp(16), 0, dp(16), 0);
+        row.addView(icon(done ? "verified_user" : "fingerprint"));
+
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        text.addView(label(done ? Text.PROVE_DONE : Text.PROVE));
+        text.addView(detail(done ? Text.PROVE_DONE_NOTE : Text.PROVE_NOTE));
+        row.addView(text, grow());
+
+        if (!done) row.setOnClickListener(v -> proveAccount());
+        return sized(row, 64);
+    }
+
+    /** Ask for a code, then show the card that takes the name. */
+    private void proveAccount() {
+        String already = Proof.waiting();
+        if (already.length() > 0) {
+            askToCheck(already);
+            return;
+        }
+        Screen.say(Text.MINE_WAIT);
+        Proof.want((ok, trouble) -> {
+            if (!ok) {
+                Screen.say(trouble);
+                return;
+            }
+            askToCheck(Proof.waiting());
+        });
+    }
+
+    /** A refusal that only means the account has not been proved yet. */
+    private boolean needsProof(boolean ok, String trouble) {
+        if (ok || !Mine.PROVE.equals(trouble)) return false;
+        proveAccount();
+        return true;
+    }
+
+    private void askToCheck(String code) {
+        Popup.prove(this, code, reply -> Proof.check((ok, trouble) -> {
+            if (ok) {
+                Screen.say(Text.PROVE_OK);
+                ordering = null;
+                Mine.ask(this::rebuild);
+            }
+            // the card stays open on a no, with the trouble under the code
+            reply.said(ok, trouble, Proof.waiting());
+            rebuild();
+        }));
     }
 
     /** Something to press, rather than a row that happens to do something. */
@@ -857,16 +918,10 @@ public class SettingsActivity extends Activity {
         below.topMargin = dp(14);
         take.setOnClickListener(v -> {
             if (!Mine.everAsked()) {
-                Mine.ask(() -> Mine.takeFree((ok, trouble) -> {
-                    Screen.say(ok ? Text.FREE_BADGE_GOT : Text.MINE_TOO_OFTEN);
-                    rebuild();
-                }));
+                Mine.ask(() -> Mine.takeFree(this::tookFree));
                 return;
             }
-            Mine.takeFree((ok, trouble) -> {
-                Screen.say(ok ? Text.FREE_BADGE_GOT : Text.MINE_TOO_OFTEN);
-                rebuild();
-            });
+            Mine.takeFree(this::tookFree);
         });
         card.addView(take, below);
 
@@ -875,6 +930,12 @@ public class SettingsActivity extends Activity {
         holder.addView(card, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return holder;
+    }
+
+    private void tookFree(boolean ok, String trouble) {
+        if (needsProof(ok, trouble)) return;
+        Screen.say(ok ? Text.FREE_BADGE_GOT : Text.MINE_TOO_OFTEN);
+        rebuild();
     }
 
     // ------------------------------------------------------ the donation
@@ -1190,6 +1251,7 @@ public class SettingsActivity extends Activity {
             card.addView(line());
             card.addView(actionRow("block", Text.BANNER_OFF, null, () -> Banner.drop(
                     (ok, trouble) -> {
+                        if (needsProof(ok, trouble)) return;
                         Popup.show(this, Text.BANNER,
                                 ok ? Text.GRADIENT_SAVED : trouble, Text.TEST_CLOSE);
                         rebuild();
@@ -1199,6 +1261,7 @@ public class SettingsActivity extends Activity {
             card.addView(line());
             card.addView(slider(Text.BANNER_DIM, Banner.dim(), 90, value ->
                     Banner.setDim(value, (ok, trouble) -> {
+                        if (needsProof(ok, trouble)) return;
                         if (!ok) Toast.makeText(this, trouble, Toast.LENGTH_LONG).show();
                         rebuild();
                     })));
@@ -1266,11 +1329,17 @@ public class SettingsActivity extends Activity {
         }
         card.addView(line());
         card.addView(actionRow("star", Text.GRADIENT_SAVE, null, () -> Gradient.save(
-                gradientColours, (ok, trouble) -> Popup.show(this, Text.GRADIENT,
-                        ok ? Text.GRADIENT_SAVED : trouble, Text.TEST_CLOSE))));
+                gradientColours, (ok, trouble) -> {
+                    if (needsProof(ok, trouble)) return;
+                    Popup.show(this, Text.GRADIENT,
+                            ok ? Text.GRADIENT_SAVED : trouble, Text.TEST_CLOSE);
+                })));
         card.addView(actionRow("visibility_off", Text.GRADIENT_OFF, null, () -> Gradient.drop(
-                (ok, trouble) -> Popup.show(this, Text.GRADIENT,
-                        ok ? Text.GRADIENT_SAVED : trouble, Text.TEST_CLOSE))));
+                (ok, trouble) -> {
+                    if (needsProof(ok, trouble)) return;
+                    Popup.show(this, Text.GRADIENT,
+                            ok ? Text.GRADIENT_SAVED : trouble, Text.TEST_CLOSE);
+                })));
         card.addView(caption(Text.GRADIENT_NOTE));
         return card;
     }
@@ -1929,6 +1998,7 @@ public class SettingsActivity extends Activity {
         }
         if (request == PICK_BANNER) {
             Banner.send(this, source, (ok, trouble) -> {
+                if (needsProof(ok, trouble)) return;
                 Popup.show(this, Text.BANNER, ok ? Text.GRADIENT_SAVED : trouble,
                         Text.TEST_CLOSE);
                 rebuild();

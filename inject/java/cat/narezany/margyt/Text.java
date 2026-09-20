@@ -218,6 +218,97 @@ final class Text {
     static final String GRADIENT_NO_ACCOUNT = pick(
             "Сначала войди в аккаунт", "Спочатку увійди в акаунт", "Sign in first");
 
+    // ------------------------------------------------ proving an account is yours
+
+    static final String PROVE = pick(
+            "Подтвердить аккаунт", "Підтвердити акаунт", "Prove the account is yours");
+
+    static final String PROVE_NOTE = pick(
+            "Без этого сервер не даст менять значки, градиент и баннер.",
+            "Без цього сервер не дасть змінювати значки, градієнт і банер.",
+            "Without it the server will not let anything be changed.");
+
+    static final String PROVE_DONE = pick(
+            "Аккаунт подтверждён", "Акаунт підтверджено", "Account proved");
+
+    static final String PROVE_DONE_NOTE = pick(
+            "Код можно убрать из описания профиля.",
+            "Код можна прибрати з опису профілю.",
+            "The code can come out of the bio now.");
+
+    static final String PROVE_HOW = pick(
+            "1. Скопируй код.\n"
+                    + "2. Вставь его в описание профиля в TikTok и сохрани.\n"
+                    + "3. Вернись сюда и нажми «Проверить».\n"
+                    + "Потом код можно убрать из описания.",
+            "1. Скопіюй код.\n"
+                    + "2. Встав його в опис профілю в TikTok і збережи.\n"
+                    + "3. Повернись сюди і натисни «Перевірити».\n"
+                    + "Потім код можна прибрати з опису.",
+            "1. Copy the code.\n"
+                    + "2. Put it in your TikTok bio and save.\n"
+                    + "3. Come back here and press Check.\n"
+                    + "The code can come out afterwards.");
+
+    static final String PROVE_WHY = pick(
+            "Так сервер убеждается, что аккаунт твой: в чужое описание никто "
+                    + "написать не может.",
+            "Так сервер переконується, що акаунт твій: у чужий опис ніхто "
+                    + "написати не може.",
+            "It is the one thing only the owner of an account can do.");
+
+    static final String PROVE_COPY = pick("Код скопирован", "Код скопійовано",
+            "Code copied");
+
+    static final String PROVE_TAP = pick(
+            "Нажми на код, чтобы скопировать",
+            "Натисни на код, щоб скопіювати",
+            "Tap the code to copy it");
+
+    static final String PROVE_CHECKING = pick(
+            "Смотрю твою страницу…", "Дивлюсь твою сторінку…", "Reading your page...");
+
+    static final String PROVE_CHECK = pick("Проверить", "Перевірити", "Check");
+
+    static final String PROVE_OK = pick(
+            "Готово, аккаунт твой", "Готово, акаунт твій", "Done, it is yours");
+
+    static final String PROVE_NOT_THERE = pick(
+            "Кода в описании не видно. Сохрани описание и жми ещё раз, "
+                    + "TikTok обновляет страницу не сразу.",
+            "Коду в описі не видно. Збережи опис і тисни ще раз, "
+                    + "TikTok оновлює сторінку не одразу.",
+            "The code is not on the page yet. Save the bio and press again, "
+                    + "TikTok takes a moment to show it.");
+
+    static final String PROVE_OTHER_NAME = pick(
+            "Этот ник принадлежит другому аккаунту",
+            "Цей нік належить іншому акаунту",
+            "That name belongs to another account");
+
+    static final String PROVE_NO_TIKTOK = pick(
+            "TikTok не ответил, попробуй ещё раз",
+            "TikTok не відповів, спробуй ще раз",
+            "TikTok did not answer, try again");
+
+    static final String PROVE_NO_SERVER = pick(
+            "Сервер не отвечает", "Сервер не відповідає", "The server is not answering");
+
+    static final String PROVE_STALE = pick(
+            "Код устарел. Вот новый, вставь его.",
+            "Код застарів. Ось новий, встав його.",
+            "That code ran out. Here is a new one.");
+
+    static final String PROVE_TOO_OFTEN = pick(
+            "Слишком часто, подожди немного", "Занадто часто, зачекай трохи",
+            "Too often, wait a moment");
+
+    static final String PROVE_NO_ACCOUNT = pick(
+            "Сначала войди в аккаунт", "Спочатку увійди в акаунт", "Sign in first");
+
+    static final String PROVE_FAILED = pick(
+            "Не вышло", "Не вийшло", "That did not work");
+
     static final String TAGS = pick("Фильтр хештегов", "Фільтр хештегів", "Hashtag filter");
 
     static final String TAGS_NOTE = pick(
@@ -519,11 +610,11 @@ final class Text {
             "A free badge for the old lot");
 
     static final String FREE_BADGE_TEXT = pick(
-            "Бирюзовый значок «Использовал MargyT до 20-го сентября». "
-                    + "После 20-го его больше не выдадут — ни за что.",
-            "Бірюзовий значок «Користувався MargyT до 20-го вересня». "
-                    + "Після 20-го його більше не видадуть — ні за що.",
-            "A turquoise badge that says you were here before the 20th of "
+            "Бирюзовый значок «Использовал MargyT до 24-го сентября». "
+                    + "После 24-го его больше не выдадут, ни за что.",
+            "Бірюзовий значок «Користувався MargyT до 24-го вересня». "
+                    + "Після 24-го його більше не видадуть, ні за що.",
+            "A turquoise badge that says you were here before the 24th of "
                     + "September. After that nobody gets one, at any price.");
 
     static final String FREE_BADGE_TAKE = pick("Забрать", "Забрати", "Take it");

@@ -402,6 +402,166 @@ public final class Popup {
     }
 
     /**
+     * The card that proves an account: a code to copy and a button to press.
+     *
+     * It stays open while it is checked. Closing it to put the code in a bio
+     * and finding the way back is a step nobody should have to remember, and
+     * TikTok takes a moment to show a changed bio, so being able to press
+     * again is the whole point.
+     */
+    public interface Reply {
+        /** Whether it worked, what went wrong, and the code to show now. */
+        void said(boolean ok, String trouble, String code);
+    }
+
+    public interface Checking {
+        void check(Reply reply);
+    }
+
+    public static void prove(Context context, String code, final Checking checking) {
+        try {
+            Skin skin = Skin.remembered(context);
+            final Dialog dialog = new Dialog(context);
+            Window window = dialog.getWindow();
+            if (window != null) {
+                dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+                window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                window.setDimAmount(0.6f);
+            }
+
+            LinearLayout card = new LinearLayout(context);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setPadding(dp(context, 24), dp(context, 24), dp(context, 24),
+                    dp(context, 16));
+            GradientDrawable background = new GradientDrawable();
+            background.setColor(skin.card);
+            background.setCornerRadius(Math.max(skin.radius, dp(context, 16)));
+            card.setBackground(background);
+
+            TextView head = new TextView(context);
+            head.setText(Text.PROVE);
+            head.setTextColor(skin.text);
+            head.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+            head.setTypeface(Typeface.DEFAULT_BOLD);
+            head.setGravity(Gravity.CENTER);
+            card.addView(head);
+
+            TextView how = new TextView(context);
+            how.setText(Text.PROVE_HOW);
+            how.setTextColor(skin.muted());
+            how.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            how.setPadding(0, dp(context, 10), 0, dp(context, 14));
+            card.addView(how);
+
+            final TextView shown = new TextView(context);
+            shown.setText(code);
+            shown.setTextColor(skin.text);
+            shown.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+            shown.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+            shown.setGravity(Gravity.CENTER);
+            shown.setPadding(dp(context, 12), dp(context, 12), dp(context, 12),
+                    dp(context, 12));
+            GradientDrawable box = new GradientDrawable();
+            box.setColor(skin.page);
+            box.setCornerRadius(dp(context, 12));
+            box.setStroke(dp(context, 1), Accent.colour());
+            shown.setBackground(box);
+            shown.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    copy(v.getContext(), shown.getText().toString());
+                    Screen.say(Text.PROVE_COPY);
+                }
+            });
+            card.addView(shown, wide(context, 0));
+
+            final TextView tap = new TextView(context);
+            tap.setText(Text.PROVE_TAP);
+            tap.setTextColor(skin.muted());
+            tap.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            tap.setGravity(Gravity.CENTER);
+            tap.setPadding(0, dp(context, 8), 0, 0);
+            card.addView(tap);
+
+            final TextView go = new TextView(context);
+            go.setText(Text.PROVE_CHECK);
+            go.setTextColor(onAccent());
+            go.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+            go.setTypeface(Typeface.DEFAULT_BOLD);
+            go.setGravity(Gravity.CENTER);
+            go.setPadding(0, dp(context, 12), 0, dp(context, 12));
+            GradientDrawable pill = new GradientDrawable();
+            pill.setColor(Accent.colour());
+            pill.setCornerRadius(dp(context, 12));
+            go.setBackground(pill);
+            go.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (!go.isEnabled()) return;
+                    go.setEnabled(false);
+                    go.setAlpha(0.6f);
+                    tap.setText(Text.PROVE_CHECKING);
+                    checking.check(new Reply() {
+                        @Override
+                        public void said(boolean ok, String trouble, String fresh) {
+                            if (ok) {
+                                close(dialog);
+                                return;
+                            }
+                            if (fresh != null && fresh.length() > 0) shown.setText(fresh);
+                            tap.setText(trouble);
+                            go.setEnabled(true);
+                            go.setAlpha(1f);
+                        }
+                    });
+                }
+            });
+            card.addView(go, wide(context, 14));
+
+            TextView why = new TextView(context);
+            why.setText(Text.PROVE_WHY);
+            why.setTextColor(skin.muted());
+            why.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            why.setGravity(Gravity.CENTER);
+            why.setPadding(0, dp(context, 12), 0, 0);
+            card.addView(why);
+
+            dialog.setContentView(card);
+            dialog.setCanceledOnTouchOutside(true);
+            dialog.show();
+
+            if (window != null) {
+                WindowManager.LayoutParams params = window.getAttributes();
+                params.width = Math.min(dp(context, 340),
+                        (int) (context.getResources().getDisplayMetrics().widthPixels * 0.9f));
+                params.gravity = Gravity.CENTER;
+                window.setAttributes(params);
+            }
+        } catch (Throwable error) {
+            Diary.note("popup: " + error);
+        }
+    }
+
+    private static LinearLayout.LayoutParams wide(Context context, int above) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = dp(context, above);
+        return params;
+    }
+
+    private static void copy(Context context, String text) {
+        try {
+            android.content.ClipboardManager board =
+                    (android.content.ClipboardManager)
+                            context.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (board != null) {
+                board.setPrimaryClip(android.content.ClipData.newPlainText("MargyT", text));
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
      * A question with two answers, and a box that can be ticked.
      *
      * The same card as `show`, with a second button drawn quietly beside the
