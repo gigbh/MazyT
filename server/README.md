@@ -1,5 +1,4 @@
-<img src="server/shit.png" alt="Dream mod wallahi">
-
+![dream mod wallahi](shit.png)
 
 
 # 徽章服务器
