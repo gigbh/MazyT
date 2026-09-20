@@ -10,34 +10,89 @@ The pages are written out here rather than served from files: there are four
 of them, they are all form and table, and a template engine would be more
 machinery than the thing it renders.
 
-Signing in is a name and a password kept in `admin.txt` beside the database,
-and a signed cookie afterwards. Not a session store, because there is one
-session: the cookie carries when it was issued and a signature over that, so
-the server can check it without remembering anything.
+Signing in is a name and a password, and a signed cookie afterwards. The
+password is in the database as a salted hash rather than beside it in a file
+anybody with the disk can read: the box that keeps it also serves the panel,
+so a file of plain text there is the same as no password at all.
+
+Not a session store, because there is one session: the cookie carries when it
+was issued and a signature over that, so the server can check it without
+remembering anything.
 """
 
 import base64
 import hashlib
 import hmac
 import html
-import json
 import os
 import secrets
+import sqlite3
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+DB = os.path.join(HERE, "badges.db")
 
 HOURS = 12 * 3600
 
+#: how long the hash takes to work out, which is how long a guess takes too
+ROUNDS = 240000
+
+
+def store():
+    return sqlite3.connect(DB, timeout=10)
+
+
+def kept():
+    """The one account allowed in: name, salt, hash and the cookie key."""
+    try:
+        db = store()
+        row = db.execute("SELECT user, salt, hash, secret FROM admin"
+                         " ORDER BY user LIMIT 1").fetchone()
+        db.close()
+        return row
+    except Exception:
+        return None
+
+
+def hashed(password, salt):
+    return hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), bytes.fromhex(salt), ROUNDS).hex()
+
+
+def admit(user, password):
+    """Whether this name and password are the ones."""
+    row = kept()
+    if not row or not user or not password:
+        return False
+    if not hmac.compare_digest(user, row[0]):
+        return False
+    return hmac.compare_digest(hashed(password, row[1]), row[2])
+
+
+def set_password(user, password):
+    """Write a new password down as a salt and a hash, never as itself."""
+    salt = secrets.token_hex(16)
+    db = store()
+    row = db.execute("SELECT secret FROM admin WHERE user = ?", (user,)).fetchone()
+    secret = row[0] if row else secrets.token_hex(32)
+    db.execute("INSERT INTO admin (user, salt, hash, secret, changed)"
+               " VALUES (?,?,?,?,?) ON CONFLICT(user) DO UPDATE SET"
+               " salt = excluded.salt, hash = excluded.hash,"
+               " changed = excluded.changed",
+               (user, salt, hashed(password, salt), secret, int(time.time())))
+    db.commit()
+    db.close()
+
+
+def secret():
+    row = kept()
+    return row[3] if row else ""
+
 
 def who():
-    """The name, the password and the key the cookie is signed with."""
-    try:
-        with open(os.path.join(HERE, "admin.txt"), encoding="utf-8") as handle:
-            said = json.load(handle)
-        return said.get("user", ""), said.get("password", ""), said.get("secret", "")
-    except Exception:
-        return "", "", ""
+    """The name that may sign in, for a page that wants to show it."""
+    row = kept()
+    return row[0] if row else ""
 
 
 def sign(when, secret):
@@ -45,14 +100,13 @@ def sign(when, secret):
 
 
 def ticket():
-    _user, _password, secret = who()
     when = int(time.time())
-    return "%d.%s" % (when, sign(when, secret))
+    return "%d.%s" % (when, sign(when, secret()))
 
 
 def allowed(cookie):
-    _user, _password, secret = who()
-    if not secret or not cookie:
+    key = secret()
+    if not key or not cookie:
         return False
     for piece in cookie.split(";"):
         piece = piece.strip()
@@ -63,7 +117,7 @@ def allowed(cookie):
             when, mark = value.split(".", 1)
             if int(time.time()) - int(when) > HOURS:
                 return False
-            return hmac.compare_digest(mark, sign(int(when), secret))
+            return hmac.compare_digest(mark, sign(int(when), key))
         except Exception:
             return False
     return False
@@ -249,6 +303,17 @@ def main_page(badges, plugins, banners=(), gradients=(), said=""):
           <p><button>Загрузить</button></p>
         </form>
 
+        <h2>Пароль от панели</h2>
+        <form class=card method=post action="/admin/password">
+          <p class=dim>Хранится солёным хешем в базе, не текстом.</p>
+          <div class=row>
+            <div><label>старый</label><input name=now type=password></div>
+            <div><label>новый, от десяти знаков</label>
+                 <input name=fresh type=password></div>
+          </div>
+          <p><button>Сменить</button></p>
+        </form>
+
         <p><a class='button quiet' href="/admin/out">Выйти</a></p>
         """ % ("".join(rows) or "<tr><td class=dim>пока пусто</td></tr>",
                "".join(shown) or "<tr><td class=dim>пока пусто</td></tr>",
@@ -257,14 +322,18 @@ def main_page(badges, plugins, banners=(), gradients=(), said=""):
 
 
 def badge_page(badge, wearers, said=""):
+    # the third column says whether the account proved it is anybody's, which
+    # is the answer to "почему у него не сохраняются значки"
     rows = "".join(
-        "<tr><td>%s</td><td class=dim>%s</td><td><form method=post "
+        "<tr><td>%s</td><td class=dim>%s</td><td class=dim>%s</td>"
+        "<td><form method=post "
         "action='/admin/badge/take' style='display:inline'>"
         "<input type=hidden name=id value='%s'><input type=hidden name=uid value='%s'>"
         "<button class=quiet>Забрать</button></form></td></tr>"
         % (html.escape(uid), "показан" if shown else "скрыт",
+           "подтверждён" if proved else "не подтверждён",
            html.escape(badge["id"]), html.escape(uid))
-        for uid, shown in wearers)
+        for uid, shown, proved in wearers)
 
     return page("MargyT", """
         <h1>%s</h1>
@@ -280,7 +349,7 @@ def badge_page(badge, wearers, said=""):
 
         <h2>У кого он есть</h2>
         <div class=card><table>
-          <tr><th>аккаунт</th><th></th><th></th></tr>%s
+          <tr><th>аккаунт</th><th></th><th></th><th></th></tr>%s
         </table></div>
 
         <p><a class='button quiet' href="/admin">Назад</a></p>

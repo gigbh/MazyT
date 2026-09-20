@@ -11,16 +11,23 @@ sqlite file, and nginx in front for rate limiting. There is no framework here
 because there is nothing a framework would do.
 
     GET  /badges            what every phone reads
-    POST /claim             a phone says which account it is, and is given a key
+    POST /claim             a phone asks what an account holds
+    POST /prove             a code to put in that account's bio
+    POST /prove/check       the page is read, and the account gets its key
     POST /profile           that account decides what to show and in what order
     POST /old               the badge anyone running the mod before the 24th gets
     GET  /icon/<name>.png   the pictures badges are drawn with
 
-On authentication, plainly: there is none. TikTok will not tell a third party
-that somebody is who they say they are, so the first phone to claim an account
-id is given the key for it and keeps it. That is enough to stop a passer-by
-rearranging somebody else's badges and is not enough to stop somebody who
-really wants to. It is a picture beside a name.
+On authentication: the key to an account is given to whoever can change what
+that account's profile page says. The server hands out a short code, the
+person puts it in their bio, the server reads the page and sees it there.
+Nobody else can put anything in somebody else's bio, so nobody else gets the
+key.
+
+This replaces first-come-first-served, which lasted exactly as long as it took
+somebody to write a loop: fifty-odd badges were handed to accounts that had
+never run the mod, and a million requests went through asking for keys to
+accounts by id. Every key made under the old rule has been thrown away.
 
 What is enforced, and enforced here rather than in the app where it could be
 edited out: which badges a claim may grant, how often anything may be written,
@@ -32,14 +39,17 @@ import hashlib
 import io
 import json
 import os
+import re
 import secrets
 import sqlite3
+import threading
 import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import panel
+import tiktok
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(HERE, "badges.db")
@@ -54,10 +64,12 @@ WHO = os.path.join(HERE, "admin.txt")
 #: badge stays on everyone who took it and is offered to nobody -- which is
 #: what makes it worth having and what makes its wording true.
 FREE = "old"
-FREE_UNTIL = 1789851600          # 2026-09-20 00:00 UTC+3
+FREE_UNTIL = 1790197200          # 2026-09-24 00:00 UTC+3
 
-#: how often one account, or one address, may change anything
-EVERY = 60
+#: how often one account, or one address, may change anything. It used to be
+#: a minute, back when anybody could write as anybody; now a write costs a
+#: proved account, so the wait is only there to stop a stuck finger
+EVERY = 5
 
 MOST_BADGES = 16
 
@@ -76,6 +88,24 @@ BANNER_WAIT = 5 * 60
 
 #: as many colours as a gradient is worth having
 MOST_COLOURS = 5
+
+#: proving an account is yours: how long a code is good for, and how many
+#: times a page may be read before the code is spent. Long enough to open
+#: TikTok, paste and come back; short enough that a code left in a bio is not
+#: a key lying around.
+PROOF_LIVES = 30 * 60
+PROOF_TRIES = 15
+
+#: a code with less than this left is not handed out again. Somebody who
+#: opens the card gets a code they have time to use rather than the tail end
+#: of one somebody asked for half an hour ago
+PROOF_SPARE = 10 * 60
+
+#: how many checks may read TikTok in a minute, all callers together. Each
+#: one costs two requests: the name behind an id, and the page itself.
+#: Per-address limits are nginx's job; this one is about TikTok's patience
+#: with this address, which the bot depends on as well.
+PROOF_READS = 20
 
 
 # --------------------------------------------------------------- the store
@@ -114,7 +144,24 @@ def prepare():
             uid       TEXT PRIMARY KEY,
             token     TEXT NOT NULL,
             claimed   INTEGER NOT NULL,
-            written   INTEGER NOT NULL DEFAULT 0
+            written   INTEGER NOT NULL DEFAULT 0,
+            proved    INTEGER NOT NULL DEFAULT 0,
+            proved_at INTEGER NOT NULL DEFAULT 0,
+            name      TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS admin (
+            user    TEXT PRIMARY KEY,
+            salt    TEXT NOT NULL,
+            hash    TEXT NOT NULL,
+            secret  TEXT NOT NULL,
+            changed INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS proof (
+            uid   TEXT PRIMARY KEY,
+            code  TEXT NOT NULL,
+            made  INTEGER NOT NULL DEFAULT 0,
+            tried INTEGER NOT NULL DEFAULT 0,
+            last  INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS gradient (
             uid     TEXT PRIMARY KEY,
@@ -165,8 +212,52 @@ def prepare():
         if column not in badge_columns:
             db.execute("ALTER TABLE badge ADD COLUMN %s TEXT NOT NULL DEFAULT ''"
                        % column)
+    # keys used to be handed to whoever asked first, so every key that exists
+    # was made under a rule that no longer holds
+    owner_columns = [row[1] for row in db.execute("PRAGMA table_info(owner)")]
+    for column, kind in (("proved", "INTEGER NOT NULL DEFAULT 0"),
+                         ("proved_at", "INTEGER NOT NULL DEFAULT 0"),
+                         ("name", "TEXT NOT NULL DEFAULT ''")):
+        if column not in owner_columns:
+            db.execute("ALTER TABLE owner ADD COLUMN %s %s" % (column, kind))
     db.commit()
     db.close()
+    take_in_admin()
+
+
+def take_in_admin():
+    """Move the panel's password out of the file it used to live in.
+
+    It was a json file beside the database: a name and a password in plain
+    text, readable by anything that could read the disk. The name and the key
+    the cookie is signed with come across as they are; the password is hashed
+    on the way and the file is left with `.old` on the end, to be deleted by
+    hand once signing in has been seen to work.
+    """
+    db = connect()
+    already = db.execute("SELECT count(*) FROM admin").fetchone()[0]
+    db.close()
+    if already or not os.path.isfile(WHO):
+        return
+    try:
+        with open(WHO, encoding="utf-8") as handle:
+            said = json.load(handle)
+        user = said.get("user", "")
+        password = said.get("password", "")
+        if not user or not password:
+            return
+        db = connect()
+        db.execute("INSERT INTO admin (user, salt, hash, secret, changed)"
+                   " VALUES (?,?,?,?,?)",
+                   (user, "00", "", said.get("secret", "") or secrets.token_hex(32),
+                    int(time.time())))
+        db.commit()
+        db.close()
+        panel.set_password(user, password)
+        os.rename(WHO, WHO + ".old")
+        print("the panel password is in the database now")
+    except Exception as trouble:
+        print("could not take the panel password in: %s" % trouble)
 
 
 # ------------------------------------------------------------ what is served
@@ -207,13 +298,19 @@ def supporter(db, uid):
 def vouched(db, body):
     """The account a request speaks for, if it really does.
 
-    Returns the uid, or None. The token is the one handed out at `/claim`.
+    Returns the uid, or None. The token is the one given at `/prove/check`,
+    and only to somebody who could write into that account's bio. A key from
+    before that rule existed no longer counts: `proved` is nought on all of
+    them.
     """
     uid, token = body.get("uid", ""), body.get("token", "")
-    if not sane(uid) or not token:
+    if not sane(uid) or not isinstance(token, str) or not token:
         return None
-    row = db.execute("SELECT token FROM owner WHERE uid = ?", (uid,)).fetchone()
-    if not row or not secrets.compare_digest(row[0], token):
+    row = db.execute("SELECT token, proved FROM owner WHERE uid = ?",
+                     (uid,)).fetchone()
+    if not row or not row[1]:
+        return None
+    if not secrets.compare_digest(row[0], token):
         return None
     return uid
 
@@ -273,23 +370,131 @@ def mine(uid):
 # ------------------------------------------------------------- what is taken
 
 def claim(uid, ip):
-    """Give this account's key out, once, to whoever asks first."""
+    """What an account holds, and whether it has proved it is anybody's.
+
+    No key comes out of here any more. This used to hand one to whoever asked
+    first, which meant whoever asked at all.
+    """
     if not sane(uid):
         return 400, {"error": "that is not an account id"}
     db = connect()
-    row = db.execute("SELECT token FROM owner WHERE uid = ?", (uid,)).fetchone()
-    if row:
-        db.close()
-        # the key is handed back rather than refused: a phone that lost it has
-        # no other way to get it, and refusing would strand the account
-        return 200, {"uid": uid, "token": row[0], "badges": mine(uid)}
+    row = db.execute("SELECT proved FROM owner WHERE uid = ?", (uid,)).fetchone()
+    proved = bool(row and row[0])
+    db.close()
+    return 200, {"uid": uid, "proved": proved, "badges": mine(uid)}
 
-    token = secrets.token_hex(16)
-    db.execute("INSERT INTO owner (uid, token, claimed) VALUES (?, ?, ?)",
-               (uid, token, int(time.time())))
+
+# ------------------------------------------------- proving an account is yours
+
+_reads = []
+_reads_lock = threading.Lock()
+
+
+def a_read_to_spare():
+    """Whether another profile page may be read this minute.
+
+    Reading pages is the one thing here that TikTok can answer by refusing to
+    answer at all, and the bot reads them too. So the whole server shares one
+    allowance rather than each address having its own.
+    """
+    now = time.time()
+    with _reads_lock:
+        while _reads and now - _reads[0] > 60:
+            _reads.pop(0)
+        if len(_reads) >= PROOF_READS:
+            return False
+        _reads.append(now)
+        return True
+
+
+def prove(body, ip):
+    """A code for this account to put in its bio.
+
+    The same code comes back while it is good for anything, so pressing the
+    button twice does not leave a stale one in a bio.
+    """
+    uid = body.get("uid", "")
+    if not sane(uid):
+        return 400, {"error": "that is not an account id"}
+
+    now = int(time.time())
+    db = connect()
+    row = db.execute("SELECT code, made FROM proof WHERE uid = ?", (uid,)).fetchone()
+    if row and now - row[1] < PROOF_LIVES - PROOF_SPARE:
+        code, made = row[0], row[1]
+    else:
+        code, made = "margyt-" + secrets.token_hex(3), now
+        db.execute("INSERT INTO proof (uid, code, made, tried, last)"
+                   " VALUES (?,?,?,0,0) ON CONFLICT(uid) DO UPDATE SET"
+                   " code = excluded.code, made = excluded.made, tried = 0, last = 0",
+                   (uid, code, made))
+        db.commit()
+    db.close()
+    return 200, {"code": code, "until": made + PROOF_LIVES}
+
+
+def prove_check(body, ip):
+    """Read the account's own page and see the code there.
+
+    The page says which id it belongs to, so a name is not taken on trust
+    either: an account's bio proves that account and nothing else.
+    """
+    uid = body.get("uid", "")
+    if not sane(uid):
+        return 400, {"error": "that is not an account id"}
+    # a name may come with the request, but only as a fallback: the id is what
+    # is being proved, and TikTok will say which name it belongs to
+    name = (body.get("name") or "").strip().lstrip("@")
+
+    now = int(time.time())
+    db = connect()
+    row = db.execute("SELECT code, made, tried, last FROM proof WHERE uid = ?",
+                     (uid,)).fetchone()
+    if not row or now - row[1] > PROOF_LIVES:
+        db.close()
+        return 410, {"error": "ask for a code first"}
+    code, tried, last = row[0], row[2], row[3]
+    if tried >= PROOF_TRIES:
+        db.close()
+        return 429, {"error": "too many tries, ask for a new code"}
+    if now - last < 5:
+        db.close()
+        return 429, {"error": "too often", "wait": 5 - (now - last)}
+    db.execute("UPDATE proof SET tried = tried + 1, last = ? WHERE uid = ?",
+               (now, uid))
     db.commit()
     db.close()
-    return 200, {"uid": uid, "token": token, "badges": mine(uid)}
+
+    if not a_read_to_spare():
+        return 503, {"error": "too many at once, try again in a minute"}
+
+    found = tiktok.name_of(uid)
+    if found:
+        name = found
+    if not tiktok.named(name):
+        return 502, {"error": "tiktok did not answer"}
+
+    who = tiktok.profile(name)
+    if not who:
+        return 502, {"error": "tiktok did not answer"}
+    if who.get("uid") != uid:
+        return 403, {"error": "that name belongs to another account"}
+    said = " ".join([who.get("about") or "", who.get("nickname") or ""]).lower()
+    if code not in said:
+        return 400, {"error": "the code is not in that profile yet"}
+
+    token = secrets.token_hex(16)
+    db = connect()
+    db.execute("INSERT INTO owner (uid, token, claimed, proved, proved_at, name)"
+               " VALUES (?,?,?,1,?,?) ON CONFLICT(uid) DO UPDATE SET"
+               " token = excluded.token, proved = 1, proved_at = excluded.proved_at,"
+               " name = excluded.name",
+               (uid, token, now, now, who.get("username") or name))
+    db.execute("DELETE FROM proof WHERE uid = ?", (uid,))
+    db.commit()
+    out = mine(uid)
+    db.close()
+    return 200, {"uid": uid, "token": token, "proved": True, "badges": out}
 
 
 def too_soon(db, uid, ip):
@@ -309,19 +514,18 @@ def wrote(db, uid, ip):
     db.execute("UPDATE owner SET written = ? WHERE uid = ?", (now, uid))
     db.execute("INSERT INTO visitor (ip, written) VALUES (?, ?) "
                "ON CONFLICT(ip) DO UPDATE SET written = ?", (ip, now, now))
+    # an address matters only until its wait is over, and nothing was ever
+    # taking these out again
+    db.execute("DELETE FROM visitor WHERE written < ?", (now - EVERY * 10,))
 
 
 def profile(body, ip):
     """Which of an account's badges to show, and in what order."""
-    uid, token = body.get("uid", ""), body.get("token", "")
-    if not sane(uid) or not token:
-        return 400, {"error": "who?"}
-
     db = connect()
-    row = db.execute("SELECT token FROM owner WHERE uid = ?", (uid,)).fetchone()
-    if not row or not secrets.compare_digest(row[0], token):
+    uid = vouched(db, body)
+    if not uid:
         db.close()
-        return 403, {"error": "not your account"}
+        return 403, {"error": "prove"}
 
     wait = too_soon(db, uid, ip)
     if wait:
@@ -329,10 +533,11 @@ def profile(body, ip):
         return 429, {"error": "too often", "wait": wait}
 
     order = body.get("order") or []
-    hidden = set(body.get("hidden") or [])
-    if len(order) > MOST_BADGES:
+    told = body.get("hidden") or []
+    if not words(order) or not words(told) or len(order) > MOST_BADGES:
         db.close()
-        return 400, {"error": "that is not a number of badges anybody has"}
+        return 400, {"error": "that is not a list of badges"}
+    hidden = set(told)
 
     held = {badge for (badge,) in db.execute(
         "SELECT badge FROM held WHERE uid = ?", (uid,))}
@@ -396,7 +601,7 @@ def gradient(body, ip):
     uid = vouched(db, body)
     if not uid:
         db.close()
-        return 403, {"error": "not your account"}
+        return 403, {"error": "prove"}
     if not supporter(db, uid):
         db.close()
         return 403, {"error": "supporters only"}
@@ -447,7 +652,7 @@ def banner(uid, token, kind, blob, ip):
     who = vouched(db, {"uid": uid, "token": token})
     if not who:
         db.close()
-        return 403, {"error": "not your account"}
+        return 403, {"error": "prove"}
     if not supporter(db, who):
         db.close()
         return 403, {"error": "supporters only"}
@@ -502,7 +707,7 @@ def shade(body, ip):
     uid = vouched(db, body)
     if not uid:
         db.close()
-        return 403, {"error": "not your account"}
+        return 403, {"error": "prove"}
     if not supporter(db, uid):
         db.close()
         return 403, {"error": "supporters only"}
@@ -528,19 +733,15 @@ def free(body, ip):
     The badge is named here and not by the caller. A request cannot ask for
     `owner` because nothing it sends is used to choose which badge it gets.
     """
-    uid, token = body.get("uid", ""), body.get("token", "")
-    if not sane(uid) or not token:
-        return 400, {"error": "who?"}
-
     now = int(time.time())
     if now >= FREE_UNTIL:
         return 410, {"error": "that one is over"}
 
     db = connect()
-    row = db.execute("SELECT token FROM owner WHERE uid = ?", (uid,)).fetchone()
-    if not row or not secrets.compare_digest(row[0], token):
+    uid = vouched(db, body)
+    if not uid:
         db.close()
-        return 403, {"error": "not your account"}
+        return 403, {"error": "prove"}
 
     wait = too_soon(db, uid, ip)
     if wait:
@@ -558,6 +759,27 @@ def free(body, ip):
 
 def sane(uid):
     return isinstance(uid, str) and uid.isdigit() and 6 <= len(uid) <= 24
+
+
+#: what an id may be made of, for a badge and for a plugin alike. It ends up
+#: in a file name and in a Location header, and neither wants a slash or a
+#: line break in it
+NAMED = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+def named(which):
+    return isinstance(which, str) and bool(NAMED.match(which)) and ".." not in which
+
+
+def words(said):
+    """A list of short strings, which is what a list of badge ids is.
+
+    Anything else came from something other than the mod, and the shape of
+    what it sent should not be the thing that decides whether this answers or
+    drops the connection.
+    """
+    return (isinstance(said, list) and len(said) <= MOST_BADGES
+            and all(isinstance(one, str) and 0 < len(one) <= 64 for one in said))
 
 
 # --------------------------------------------------------------- the plugins
@@ -600,7 +822,7 @@ def take_plugin(raw, name):
                 continue
 
     which = str(said.get("id") or "").strip()
-    if not which or "/" in which or len(which) > 64:
+    if not named(which):
         raise ValueError("the manifest has no usable id")
 
     os.makedirs(PLUGINS, exist_ok=True)
@@ -649,9 +871,14 @@ def drop_plugin(which):
 
 # --------------------------------------------------------------- avatars
 
-#: avatars fetched lately -- mark -> (when, kind, bytes)
+#: avatars fetched lately -- mark -> (when, kind, bytes). Several requests
+#: land at once on a busy minute, so the map is only touched under its lock
 FACES = {}
+FACES_LOCK = threading.Lock()
 FACE_KEEPS = 15 * 60
+
+#: as many avatars as are worth holding in memory at once
+FACE_MANY = 200
 
 #: where an avatar may come from, and nowhere else
 FACE_HOSTS = (".tiktokcdn.com", ".tiktokcdn-eu.com", ".tiktokcdn-us.com",
@@ -727,10 +954,11 @@ def face_link(url):
 
 def face(which):
     now = time.time()
-    for stale in [key for key, (when, _k, _b) in FACES.items()
-                  if now - when > FACE_KEEPS]:
-        FACES.pop(stale, None)
-    kept = FACES.get(which)
+    with FACES_LOCK:
+        for stale in [key for key, (when, _k, _b) in list(FACES.items())
+                      if now - when > FACE_KEEPS]:
+            FACES.pop(stale, None)
+        kept = FACES.get(which)
     if kept:
         return kept[1], kept[2]
 
@@ -756,13 +984,20 @@ def face(which):
         return None, None
     if not blob:
         return None, None
-    FACES[which] = (now, kind, blob)
+    with FACES_LOCK:
+        FACES[which] = (now, kind, blob)
+        while len(FACES) > FACE_MANY:
+            FACES.pop(next(iter(FACES)), None)
     return kind, blob
 
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "margyt"
     sys_version = ""
+
+    #: a connection that says nothing for this long is dropped, so a socket
+    #: held open on purpose costs one thread rather than a thread for good
+    timeout = 30
 
     #: a HEAD is answered with the headers and nothing else
     headless = False
@@ -826,7 +1061,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def go(self, where, cookie=None):
         self.send_response(303)
-        self.send_header("Location", where)
+        # a header ends at a line break, so nothing that reaches one may hold
+        # one, whoever it came from
+        self.send_header("Location", where.replace("\r", " ").replace("\n", " "))
         if cookie is not None:
             self.send_header("Set-Cookie", cookie)
         self.send_header("Content-Length", "0")
@@ -876,7 +1113,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.go("/admin?said=нет такого значка")
                 return
             wearers = db.execute(
-                "SELECT uid, shown FROM held WHERE badge = ? ORDER BY given_at DESC",
+                "SELECT h.uid, h.shown, COALESCE(o.proved, 0) FROM held h"
+                " LEFT JOIN owner o ON o.uid = h.uid"
+                " WHERE h.badge = ? ORDER BY h.given_at DESC",
                 (which,)).fetchall()
             db.close()
             self.html(panel.badge_page(
@@ -893,9 +1132,7 @@ class Handler(BaseHTTPRequestHandler):
     def panel_post(self, path):
         if path == "/admin/in":
             said = self.form()
-            user, password, _secret = panel.who()
-            if (user and said.get("user") == user
-                    and secrets.compare_digest(said.get("password", ""), password)):
+            if panel.admit(said.get("user", ""), said.get("password", "")):
                 self.go("/admin", "margyt=%s; Path=/; Max-Age=43200; HttpOnly;"
                                   " SameSite=Lax" % panel.ticket())
             else:
@@ -904,6 +1141,20 @@ class Handler(BaseHTTPRequestHandler):
 
         if not self.signed_in():
             self.html(panel.sign_in_page())
+            return
+
+        if path == "/admin/password":
+            said = self.form()
+            now = said.get("now", "")
+            fresh = said.get("fresh", "")
+            if not panel.admit(panel.who(), now):
+                self.go("/admin?said=старый пароль не подошёл")
+                return
+            if len(fresh) < 10:
+                self.go("/admin?said=новый пароль короче десяти знаков")
+                return
+            panel.set_password(panel.who(), fresh)
+            self.go("/admin?said=пароль сменён")
             return
 
         if path == "/admin/badge/new":
@@ -925,8 +1176,8 @@ class Handler(BaseHTTPRequestHandler):
                     return ""
 
             which = field("id")
-            if not which or "/" in which or len(which) > 64:
-                self.go("/admin?said=нужен id")
+            if not named(which):
+                self.go("/admin?said=id: буквы, цифры, точка, дефис")
                 return
 
             picture = ""
@@ -1145,6 +1396,8 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             length = 0
+        if length < 0:
+            length = 0
         if length > BANNER_MOST:
             self.answer(413, {"error": "5 MB at most"})
             return
@@ -1163,6 +1416,9 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             length = int(self.headers.get("Content-Length") or 0)
+            if length < 0:
+                self.answer(400, {"error": "unreadable"})
+                return
             if length > 8192:
                 self.answer(413, {"error": "that is a lot of json"})
                 return
@@ -1176,6 +1432,10 @@ class Handler(BaseHTTPRequestHandler):
         ip = self.who()
         if path == "/claim":
             code, out = claim(body.get("uid", ""), ip)
+        elif path == "/prove":
+            code, out = prove(body, ip)
+        elif path == "/prove/check":
+            code, out = prove_check(body, ip)
         elif path == "/profile":
             code, out = profile(body, ip)
         elif path == "/old":

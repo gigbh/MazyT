@@ -15,10 +15,11 @@ anything about their own -- which of theirs to show, and in what order.
     icons/       the pictures badges are drawn with
     plugins/     what the store offers
 
-Two secrets, both written by hand on the server and neither in this
-repository: `admin.txt` is who may use the panel, `bot.txt` is the bot's
-token. Both are read at the moment they are needed, so replacing one is
-writing the file.
+One secret is written by hand on the server and is not in this repository:
+`bot.txt`, the bot's token. It is read at the moment it is needed, so
+replacing it is writing the file. The panel's password lives in the database
+as a salt and a hash; it used to be a second file, in plain text, on the same
+disk that serves the panel.
 
 No framework, because there is nothing a framework would do here. nginx sits
 in front for rate limiting; the service listens on localhost only.
@@ -26,9 +27,12 @@ in front for rate limiting; the service listens on localhost only.
 ## What it answers
 
     GET  /badges            what every phone reads, with an ETag
-    POST /claim             a phone says which account it is, and is given a key
+    POST /claim             a phone asks what an account holds
+    POST /prove             a code for that account to put in its bio
+    POST /prove/check       the page is read, and the account is given its key
     POST /profile           that account decides what to show and in what order
     POST /old               the badge anyone running the mod before the 24th gets
+    POST /gradient          a supporter's colours, and /banner, /shade
     GET  /icon/<name>.png   the pictures
 
 `/badges` is the same shape `badges.json` had, so the mod reads it the same
@@ -38,25 +42,39 @@ never by the phone's.
 
 ## On authentication
 
-There is none, and there cannot be: TikTok will not tell a third party that
-somebody is who they say they are. The first phone to claim an account id is
-given a key for it and keeps it. That is enough to stop a passer-by
-rearranging somebody else's badges, and not enough to stop somebody
-determined. It is a picture beside a name.
+TikTok will not tell a third party that somebody is who they say they are, so
+the server asks the one thing TikTok does say out loud: what a profile page
+holds. `/prove` hands out a short code, the person puts it in their bio, and
+`/prove/check` reads the page and looks for it. Nobody can write into somebody
+else's bio, so nobody else gets the key.
+
+The account id is what is proved, not the name. The name is found from the id
+through TikTok's own share link, and the page it leads to is checked against
+the id again -- so nothing has to be typed in, and a wrong name proves
+nothing.
+
+This replaced first-come-first-served, which lasted exactly as long as it took
+somebody to write a loop: fifty-odd free badges went to accounts that had
+never run the mod, and one address asked `/claim` a million times for keys to
+accounts by id. Every key made under the old rule was thrown away.
 
 What the server does not trust is anything that decides what is *given*:
 
+- the key, which now costs a line in a bio rather than a request;
 - which badge `/old` grants is written here, not sent by the caller, so no
   request can ask for `owner` or any other;
 - whether the day has passed is the server's clock;
-- once a minute per account **and** per address, counted in the database, so
+- a short wait per account **and** per address, counted in the database, so
   a client that stopped counting gains nothing;
+- how many profile pages may be read a minute, all callers together, because
+  TikTok's patience with this address is shared with the bot;
 - nginx limits requests per address as well: reads and writes separately,
   since a flood would aim at writes.
 
 ## The panel
 
-`/admin`, with the name and password from `admin.txt`. Badges: what exists, who
+`/admin`, with the name and password kept in the database, and a password
+that can be changed from the page itself. Badges: what exists, who
 wears each one, handing one out to a list of account ids, taking one back, and
 making a new one with a picture uploaded rather than named. Plugins: what the
 store offers, and adding one by uploading the packed `.mtp` -- the manifest and
@@ -83,7 +101,8 @@ says it cannot find them. A name that has been looked up is kept for a few
 minutes -- an inline search asks again on every key pressed.
 
 An account asked for by id gets its badges and nothing else: there is no page
-to read without a name.
+to read without a name. Badges somebody has hidden are not listed -- hiding
+one hides it from everybody, and the bot used to hand the full list back.
 
 Every update is handled on its own thread. Reading a profile page takes
 seconds, and doing that in the polling loop meant one inline search held up
