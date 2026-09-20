@@ -1,132 +1,80 @@
-# The badge server
+![Dream mod wallahi](server/shit.png)
 
-Badges used to be `badges.json` in this repository, re-read by every phone
-every five minutes. That worked and cost nothing. It had two limits worth
-leaving it for: granting a badge meant a commit, and nobody could decide
-anything about their own -- which of theirs to show, and in what order.
 
-## What is here
 
-    badges.py    the service: the standard library, one sqlite file
-    panel.py     the pages the panel is made of
-    bot.py       the telegram bot
-    seed.py      fills it from badges.json, once
-    badgectl     grant, take back, look up
-    icons/       the pictures badges are drawn with
-    plugins/     what the store offers
+# 徽章服务器
 
-One secret is written by hand on the server and is not in this repository:
-`bot.txt`, the bot's token. It is read at the moment it is needed, so
-replacing it is writing the file. The panel's password lives in the database
-as a salt and a hash; it used to be a second file, in plain text, on the same
-disk that serves the panel.
+徽章以前是本仓库里的 `badges.json`，每部手机每五分钟重新读取一次。那样能用，也不花钱。但有两点限制值得放弃它：授予徽章意味着要提交一次 commit，而且没人能对自己的徽章做任何决定——展示哪些、按什么顺序。
 
-No framework, because there is nothing a framework would do here. nginx sits
-in front for rate limiting; the service listens on localhost only.
+## 这里有什么
 
-## What it answers
+    badges.py    服务：标准库，一个 sqlite 文件
+    panel.py     面板由这些页面组成
+    bot.py       telegram 机器人
+    seed.py      从 badges.json 填充一次
+    badgectl     授予、收回、查询
+    icons/       徽章绘制所用的图片
+    plugins/     商店提供的内容
 
-    GET  /badges            what every phone reads, with an ETag
-    POST /claim             a phone asks what an account holds
-    POST /prove             a code for that account to put in its bio
-    POST /prove/check       the page is read, and the account is given its key
-    POST /profile           that account decides what to show and in what order
-    POST /old               the badge anyone running the mod before the 24th gets
-    POST /gradient          a supporter's colours, and /banner, /shade
-    GET  /icon/<name>.png   the pictures
+有一个密钥是手工写在服务器上的，不在本仓库里：`bot.txt`，机器人的 token。它在需要的那一刻才被读取，所以替换它就是写这个文件。面板的密码以盐和哈希的形式存在数据库里；它以前是第二个文件，明文放在同一块提供面板服务的磁盘上。
 
-`/badges` is the same shape `badges.json` had, so the mod reads it the same
-way. It carries `free_until` and `now` as well, which is how the app knows
-whether the free badge is still being given out -- by the server's clock,
-never by the phone's.
+没有框架，因为这里没有什么值得框架去做的事。nginx 在前面做限流；服务只监听 localhost。
 
-## On authentication
+## 它响应什么
 
-TikTok will not tell a third party that somebody is who they say they are, so
-the server asks the one thing TikTok does say out loud: what a profile page
-holds. `/prove` hands out a short code, the person puts it in their bio, and
-`/prove/check` reads the page and looks for it. Nobody can write into somebody
-else's bio, so nobody else gets the key.
+    GET  /badges            每部手机读取的内容，带 ETag
+    POST /claim             手机询问某个账号拥有什么
+    POST /prove             给该账号一个验证码，放进它的简介里
+    POST /prove/check       读取页面，账号获得它的密钥
+    POST /profile           该账号决定展示什么、按什么顺序
+    POST /old               24 号之前运行过 mod 的人得到的徽章
+    POST /gradient          支持者的颜色，以及 /banner、/shade
+    GET  /icon/<name>.png   图片
 
-The account id is what is proved, not the name. The name is found from the id
-through TikTok's own share link, and the page it leads to is checked against
-the id again -- so nothing has to be typed in, and a wrong name proves
-nothing.
+`/badges` 的形状和 `badges.json` 一样，所以 mod 读取方式不变。它额外带有 `free_until` 和 `now`，应用借此知道免费徽章是否还在发放——以服务器的时钟为准，绝不以手机的时钟为准。
 
-This replaced first-come-first-served, which lasted exactly as long as it took
-somebody to write a loop: fifty-odd free badges went to accounts that had
-never run the mod, and one address asked `/claim` a million times for keys to
-accounts by id. Every key made under the old rule was thrown away.
+## 关于认证
 
-What the server does not trust is anything that decides what is *given*:
+TikTok 不会告诉第三方某人就是他们自称的那个人，所以服务器只问 TikTok 确实会公开说出的那一件事：个人资料页里有什么。`/prove` 发放一个短验证码，本人把它放进简介，`/prove/check` 读取页面并查找它。没人能写进别人的简介，所以别人拿不到密钥。
 
-- the key, which now costs a line in a bio rather than a request;
-- which badge `/old` grants is written here, not sent by the caller, so no
-  request can ask for `owner` or any other;
-- whether the day has passed is the server's clock;
-- a short wait per account **and** per address, counted in the database, so
-  a client that stopped counting gains nothing;
-- how many profile pages may be read a minute, all callers together, because
-  TikTok's patience with this address is shared with the bot;
-- nginx limits requests per address as well: reads and writes separately,
-  since a flood would aim at writes.
+被证明的是账号 id，不是名字。名字通过 TikTok 自己的分享链接从 id 找到，而它指向的页面会再次对照 id 检查——所以什么都不用输入，错误的名字也证明不了任何东西。
 
-## The panel
+这取代了先到先得，而先到先得只维持到有人写了个循环为止：五十多个免费徽章发给了从未运行过 mod 的账号，还有一个地址按 id 向 `/claim` 请求了一百万次账号密钥。旧规则下制作的所有密钥都被丢弃了。
 
-`/admin`, with the name and password kept in the database, and a password
-that can be changed from the page itself. Badges: what exists, who
-wears each one, handing one out to a list of account ids, taking one back, and
-making a new one with a picture uploaded rather than named. Plugins: what the
-store offers, and adding one by uploading the packed `.mtp` -- the manifest and
-the icon are read out of that file rather than typed in, so what the store says
-about a plugin is what the phone will load.
+服务器不信任的是任何决定*给予什么*的东西：
 
-## The bot
+- 密钥，现在代价是简介里的一行，而不是一次请求；
+- `/old` 授予哪个徽章是写在这里的，不是调用方发来的，所以任何请求都无法索要 `owner` 或任何其他徽章；
+- 日期是否已过以服务器的时钟为准；
+- 每个账号**和**每个地址的短暂等待，在数据库里计数，所以停止计数的客户端什么也得不到；
+- 每分钟可以读取多少个个人资料页，所有调用方合计，因为 TikTok 对这个地址的耐心是与机器人共享的；
+- nginx 也按地址限制请求：读和写分开，因为洪水会瞄准写。
 
-`@margy_robot`, by long polling: no certificate, no port, nothing to expose. It
-does two things.
+## 面板
 
-    профиль <ник в тиктоке или айди>    the name, the picture and the badges
+`/admin`，名字和密码保存在数据库里，密码可以从页面本身更改。徽章：存在哪些、谁佩戴每一个、发放给一串账号 id、收回、以及用上传的图片而不是指定的名字新建一个。插件：商店提供什么，以及通过上传打包好的 `.mtp` 来添加一个——清单和图标是从那个文件里读出来的，而不是手工输入的，所以商店对插件的说明就是手机会加载的东西。
 
-And an icon sent as a document with an account id in the caption is forwarded
-to whoever decides.
+## 机器人
 
-Looking an account up by its @name has no API behind it: the profile page is
-fetched and read out of the blob of json the page carries for its own use --
-the name, the picture, the words under it, how many follow and how much was
-liked, all of it sitting in `webapp.user-detail`. That works today and is
-nobody's promise: when the blob moves, the id is still found by pattern and
-the rest is left out rather than guessed at, and when even that fails the bot
-says it cannot find them. A name that has been looked up is kept for a few
-minutes -- an inline search asks again on every key pressed.
+`@margy_robot`，用长轮询：没有证书、没有端口、没有需要暴露的东西。它做两件事。
 
-An account asked for by id gets its badges and nothing else: there is no page
-to read without a name. Badges somebody has hidden are not listed -- hiding
-one hides it from everybody, and the bot used to hand the full list back.
+    профиль <тикток 里的昵称或 id>    名字、图片和徽章
 
-Every update is handled on its own thread. Reading a profile page takes
-seconds, and doing that in the polling loop meant one inline search held up
-every message behind it.
+以及一个作为文档发送、说明文字里带账号 id 的图标，会被转发给决定的人。
 
-The avatar is a game of two refusals. Telegram will not fetch a picture from
-tiktok -- the CDN does not serve whoever Telegram is -- and it will not fetch
-one from this server either, because plain http on a bare address is not
-something it will touch and there is no domain here to put a certificate on.
-So the bytes are read here and handed over: uploaded with the message in a
-chat, and for an inline answer -- which can only name a picture, never carry
-one -- uploaded once to a message that is deleted immediately, keeping the
-name Telegram gave it. Those names are kept in `face`. `/face/<id>.jpg` serves
-avatars to anything that will fetch them, and is what the bot can use the day
-there is a domain.
+按 @名字 查询账号背后没有 API：抓取个人资料页，并从页面为自己使用而携带的那团 json 里读出——名字、图片、下面的文字、多少关注者、多少点赞，全都在 `webapp.user-detail` 里。今天这样能用，但不是任何人的承诺：当这团数据移动时，id 仍按模式找到，其余部分宁可省略也不猜测；当连这也失败时，机器人说找不到他们。查过的名字会保留几分钟——内联搜索每按一个键都会再问一次。
 
-An answer carries the topic of the question it answers. In a group that keeps
-topics, an answer without one goes to General -- and a closed General means
-every answer is refused outright.
+按 id 查询的账号只得到它的徽章，别的什么都没有：没有名字就没有页面可读。有人隐藏的徽章不会被列出——隐藏一个就是对所有人隐藏，而机器人以前会把完整列表交回去。
 
-Inline mode has to be turned on in BotFather (`/setinline`) before the bot can
-answer in other chats; nothing here can do that.
+每个更新都在自己的线程上处理。读取个人资料页要花几秒，在轮询循环里做这件事意味着一次内联搜索会挡住它后面的每条消息。
 
-## Running it
+头像是两次拒绝的游戏。Telegram 不会从 tiktok 抓取图片——CDN 不为 Telegram 所代表的一方提供服务——它也不会从这台服务器抓取，因为裸地址上的纯 http 不是它愿意碰的东西，而这里没有域名可以放证书。所以字节在这里被读取并交出去：在聊天里随消息上传，而对于内联回答——它只能说出图片的名字，永远不能携带图片——上传到一个立即被删除的消息，保留 Telegram 给它的名字。那些名字保存在 `face` 里。`/face/<id>.jpg` 向任何愿意抓取的东西提供头像，也是机器人有朝一日有域名时可以用的东西。
+
+一个回答带着它所回答问题的主题。在保留主题的群里，没有主题的回答会去 General——而关闭的 General 意味着每个回答都被直接拒绝。
+
+内联模式必须在 BotFather 里打开（`/setinline`），机器人才能在其他聊天里回答；这里没有任何东西能做到那一点。
+
+## 运行它
 
     systemctl status margyt-badges margyt-bot
     journalctl -u margyt-badges -f
@@ -137,8 +85,6 @@ answer in other chats; nothing here can do that.
     badgectl who   7551880794956989495
     badgectl take  supporter 7551880794956989495
 
-## What is left to do
+## 还剩什么要做
 
-It answers over plain http. A domain and a certificate would fix that; until
-then the badges are public anyway, and the one thing worth protecting -- the
-key a phone is given -- is worth protecting properly rather than partly.
+它通过纯 http 应答。一个域名和一张证书能解决这个问题；在那之前徽章本来就是公开的，而唯一值得保护的东西——给手机的密钥——值得被妥善保护，而不是部分保护。
